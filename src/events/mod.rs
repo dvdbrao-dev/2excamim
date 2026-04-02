@@ -1,11 +1,23 @@
+pub mod decision_formed;
 pub mod envelope;
 pub mod error;
-pub mod validation;
+pub mod fill_received;
+pub mod hypothesis_generated;
 pub mod linkage;
 pub mod provenance;
-pub mod hypothesis_generated;
-pub mod signal_generated;
 pub mod signal_confirmed;
+pub mod signal_generated;
+pub mod validation;
 pub mod veto_raised;
-pub mod decision_formed;
-pub mod fill_received;
+
+pub use decision_formed::{DecisionAction, DecisionFormed};
+pub use envelope::{EventEnvelope, EventType, EventTyped};
+pub use error::EventError;
+pub use fill_received::{FillReceived, FillSide};
+pub use hypothesis_generated::HypothesisGenerated;
+pub use linkage::Linkage;
+pub use provenance::{Provenance, SourceKind};
+pub use signal_confirmed::SignalConfirmed;
+pub use signal_generated::{SignalGenerated, SignalSide};
+pub use validation::{validate_envelope, Validate};
+pub use veto_raised::{VetoRaised, VetoScope};
