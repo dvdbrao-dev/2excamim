@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 use crate::events::{
     envelope::{EventType, EventTyped},
     error::EventError,
-    validation::Validate,
+    validation::{
+        validate_idempotency_component, validate_optional_string, validate_required_string,
+        Validate,
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,6 +27,8 @@ pub struct VetoRaised {
     pub raised_by: String,
 }
 
+pub type VetoRaisedPayload = VetoRaised;
+
 impl EventTyped for VetoRaised {
     fn event_type() -> EventType {
         EventType::VetoRaised
@@ -36,26 +41,11 @@ impl EventTyped for VetoRaised {
 
 impl Validate for VetoRaised {
     fn validate(&self) -> Result<(), EventError> {
-        if self.veto_id.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "veto_id cannot be empty".into(),
-            ));
-        }
-        if self.target_id.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "target_id cannot be empty".into(),
-            ));
-        }
-        if self.reason_code.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "reason_code cannot be empty".into(),
-            ));
-        }
-        if self.raised_by.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "raised_by cannot be empty".into(),
-            ));
-        }
+        validate_idempotency_component(&self.veto_id, "veto_id")?;
+        validate_required_string(&self.target_id, "target_id")?;
+        validate_required_string(&self.reason_code, "reason_code")?;
+        validate_optional_string(self.reason_text.as_deref(), "reason_text")?;
+        validate_required_string(&self.raised_by, "raised_by")?;
 
         Ok(())
     }

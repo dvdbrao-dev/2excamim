@@ -6,6 +6,22 @@ pub enum EventError {
     InvariantError(String),
 }
 
+impl EventError {
+    pub fn validation(message: impl Into<String>) -> Self {
+        Self::ValidationError(message.into())
+    }
+
+    pub fn invariant(message: impl Into<String>) -> Self {
+        Self::InvariantError(message.into())
+    }
+
+    pub fn message(&self) -> &str {
+        match self {
+            Self::ValidationError(message) | Self::InvariantError(message) => message,
+        }
+    }
+}
+
 impl fmt::Display for EventError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

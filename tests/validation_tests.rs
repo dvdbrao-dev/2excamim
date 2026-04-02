@@ -3,6 +3,7 @@ use twoexcamim::events::{
     EventEnvelope, EventError, FillReceived, FillSide, HypothesisGenerated, Linkage, Provenance,
     SignalGenerated, SignalSide, SourceKind, VetoRaised, VetoScope,
 };
+use uuid::Uuid;
 
 fn linkage() -> Linkage {
     Linkage::default()
@@ -166,4 +167,58 @@ fn fill_received_rejects_non_positive_quantity_and_price() {
         matches!(quantity_err, EventError::ValidationError(message) if message.contains("quantity"))
     );
     assert!(matches!(price_err, EventError::ValidationError(message) if message.contains("price")));
+}
+
+#[test]
+fn envelope_rejects_blank_optional_fields_when_present() {
+    let err = EventEnvelope::new_hypothesis_generated(
+        "research",
+        Some("   ".into()),
+        Linkage {
+            correlation_id: Some("".into()),
+            ..linkage()
+        },
+        provenance(),
+        HypothesisGenerated {
+            hypothesis_id: "hyp-1".into(),
+            instrument: "ETHUSDT".into(),
+            timeframe: "15m".into(),
+            thesis: "Mean reversion".into(),
+            direction_hint: None,
+            confidence: Some(0.5),
+        },
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(err, EventError::ValidationError(message) if message.contains("aggregate_key") || message.contains("linkage.correlation_id"))
+    );
+}
+
+#[test]
+fn envelope_rejects_tampered_payload_idempotency_key() {
+    let mut event = EventEnvelope::new_signal_generated(
+        "runtime",
+        None,
+        linkage(),
+        provenance(),
+        SignalGenerated {
+            signal_id: "sig-1".into(),
+            hypothesis_id: Some("hyp-1".into()),
+            instrument: "ETHUSDT".into(),
+            timeframe: "15m".into(),
+            side: SignalSide::Long,
+            strength: 0.8,
+            rationale: Some("confirmed divergence".into()),
+        },
+    )
+    .unwrap();
+
+    event.event_id = Uuid::new_v4().to_string();
+    event.idempotency_key = "signal.generated:v1:other".into();
+
+    let err = event.validate().unwrap_err();
+    assert!(
+        matches!(err, EventError::InvariantError(message) if message.contains("idempotency_key"))
+    );
 }

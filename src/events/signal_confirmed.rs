@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use crate::events::{
     envelope::{EventType, EventTyped},
     error::EventError,
-    validation::Validate,
+    validation::{
+        validate_idempotency_component, validate_optional_string, validate_probability, Validate,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -13,6 +15,8 @@ pub struct SignalConfirmed {
     pub confirmation_reason: Option<String>,
     pub confirmation_score: Option<f64>,
 }
+
+pub type SignalConfirmedPayload = SignalConfirmed;
 
 impl EventTyped for SignalConfirmed {
     fn event_type() -> EventType {
@@ -29,22 +33,11 @@ impl EventTyped for SignalConfirmed {
 
 impl Validate for SignalConfirmed {
     fn validate(&self) -> Result<(), EventError> {
-        if self.signal_id.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "signal_id cannot be empty".into(),
-            ));
-        }
-        if self.confirmed_by.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "confirmed_by cannot be empty".into(),
-            ));
-        }
+        validate_idempotency_component(&self.signal_id, "signal_id")?;
+        validate_idempotency_component(&self.confirmed_by, "confirmed_by")?;
+        validate_optional_string(self.confirmation_reason.as_deref(), "confirmation_reason")?;
         if let Some(score) = self.confirmation_score {
-            if !(0.0..=1.0).contains(&score) {
-                return Err(EventError::ValidationError(
-                    "confirmation_score must be in [0,1]".into(),
-                ));
-            }
+            validate_probability(score, "confirmation_score")?;
         }
 
         Ok(())

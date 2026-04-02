@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use crate::events::{
     envelope::{EventType, EventTyped},
     error::EventError,
-    validation::Validate,
+    validation::{
+        validate_idempotency_component, validate_optional_string, validate_positive_finite,
+        validate_required_string, Validate,
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,6 +29,8 @@ pub struct FillReceived {
     pub executed_at: DateTime<Utc>,
 }
 
+pub type FillReceivedPayload = FillReceived;
+
 impl EventTyped for FillReceived {
     fn event_type() -> EventType {
         EventType::FillReceived
@@ -41,30 +46,13 @@ impl EventTyped for FillReceived {
 
 impl Validate for FillReceived {
     fn validate(&self) -> Result<(), EventError> {
-        if self.fill_id.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "fill_id cannot be empty".into(),
-            ));
-        }
-        if self.order_id.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "order_id cannot be empty".into(),
-            ));
-        }
-        if self.instrument.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "instrument cannot be empty".into(),
-            ));
-        }
-        if self.venue.trim().is_empty() {
-            return Err(EventError::ValidationError("venue cannot be empty".into()));
-        }
-        if self.quantity <= 0.0 {
-            return Err(EventError::ValidationError("quantity must be > 0".into()));
-        }
-        if self.price <= 0.0 {
-            return Err(EventError::ValidationError("price must be > 0".into()));
-        }
+        validate_idempotency_component(&self.fill_id, "fill_id")?;
+        validate_optional_string(self.decision_id.as_deref(), "decision_id")?;
+        validate_idempotency_component(&self.order_id, "order_id")?;
+        validate_required_string(&self.instrument, "instrument")?;
+        validate_idempotency_component(&self.venue, "venue")?;
+        validate_positive_finite(self.quantity, "quantity")?;
+        validate_positive_finite(self.price, "price")?;
 
         Ok(())
     }

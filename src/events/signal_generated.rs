@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 use crate::events::{
     envelope::{EventType, EventTyped},
     error::EventError,
-    validation::Validate,
+    validation::{
+        validate_idempotency_component, validate_optional_string, validate_probability,
+        validate_required_string, Validate,
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,6 +27,8 @@ pub struct SignalGenerated {
     pub rationale: Option<String>,
 }
 
+pub type SignalGeneratedPayload = SignalGenerated;
+
 impl EventTyped for SignalGenerated {
     fn event_type() -> EventType {
         EventType::SignalGenerated
@@ -36,26 +41,12 @@ impl EventTyped for SignalGenerated {
 
 impl Validate for SignalGenerated {
     fn validate(&self) -> Result<(), EventError> {
-        if self.signal_id.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "signal_id cannot be empty".into(),
-            ));
-        }
-        if self.instrument.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "instrument cannot be empty".into(),
-            ));
-        }
-        if self.timeframe.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "timeframe cannot be empty".into(),
-            ));
-        }
-        if !(0.0..=1.0).contains(&self.strength) {
-            return Err(EventError::ValidationError(
-                "strength must be in [0,1]".into(),
-            ));
-        }
+        validate_idempotency_component(&self.signal_id, "signal_id")?;
+        validate_optional_string(self.hypothesis_id.as_deref(), "hypothesis_id")?;
+        validate_required_string(&self.instrument, "instrument")?;
+        validate_required_string(&self.timeframe, "timeframe")?;
+        validate_probability(self.strength, "strength")?;
+        validate_optional_string(self.rationale.as_deref(), "rationale")?;
 
         Ok(())
     }

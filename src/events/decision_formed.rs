@@ -4,7 +4,10 @@ use crate::events::{
     envelope::{EventType, EventTyped},
     error::EventError,
     signal_generated::SignalSide,
-    validation::Validate,
+    validation::{
+        validate_idempotency_component, validate_optional_string, validate_positive_finite,
+        validate_required_string, Validate,
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,6 +29,8 @@ pub struct DecisionFormed {
     pub rationale: Option<String>,
 }
 
+pub type DecisionFormedPayload = DecisionFormed;
+
 impl EventTyped for DecisionFormed {
     fn event_type() -> EventType {
         EventType::DecisionFormed
@@ -38,20 +43,11 @@ impl EventTyped for DecisionFormed {
 
 impl Validate for DecisionFormed {
     fn validate(&self) -> Result<(), EventError> {
-        if self.decision_id.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "decision_id cannot be empty".into(),
-            ));
-        }
-        if self.instrument.trim().is_empty() {
-            return Err(EventError::ValidationError(
-                "instrument cannot be empty".into(),
-            ));
-        }
+        validate_idempotency_component(&self.decision_id, "decision_id")?;
+        validate_required_string(&self.instrument, "instrument")?;
+        validate_optional_string(self.rationale.as_deref(), "rationale")?;
         if let Some(size_hint) = self.size_hint {
-            if size_hint <= 0.0 {
-                return Err(EventError::ValidationError("size_hint must be > 0".into()));
-            }
+            validate_positive_finite(size_hint, "size_hint")?;
         }
 
         Ok(())

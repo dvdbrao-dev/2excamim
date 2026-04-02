@@ -1,5 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+use crate::events::{
+    error::EventError,
+    validation::{validate_optional_string, Validate},
+};
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Provenance {
     pub source_kind: SourceKind,
@@ -18,4 +23,18 @@ pub enum SourceKind {
     ExecutionVenue,
     HumanOverride,
     Derived,
+}
+
+impl Validate for Provenance {
+    fn validate(&self) -> Result<(), EventError> {
+        validate_optional_string(self.source_ref.as_deref(), "provenance.source_ref")?;
+        validate_optional_string(
+            self.producer_run_id.as_deref(),
+            "provenance.producer_run_id",
+        )?;
+        validate_optional_string(self.actor.as_deref(), "provenance.actor")?;
+        validate_optional_string(self.trace_id.as_deref(), "provenance.trace_id")?;
+        validate_optional_string(self.notes.as_deref(), "provenance.notes")?;
+        Ok(())
+    }
 }
