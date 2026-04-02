@@ -118,3 +118,31 @@ Incluye:
 - `DecisionProjection` mínima derivada de `decision.formed`, `veto.raised` y `fill.received`
 
 Las projections usan rehidratación tipada cuando hace falta y omiten eventos que no aportan al estado derivado.
+
+## Query layer v1
+
+El crate expone una capa de consultas mínima en `src/queries/` sobre `JsonlEventStore` + projections existentes:
+
+```rust
+use twoexcamim::queries::QueryService;
+use twoexcamim::store::JsonlEventStore;
+
+let store = JsonlEventStore::new("./var/events.jsonl")?;
+let queries = QueryService::new(&store);
+
+let all_events = queries.all_events()?;
+let signal = queries.signal_projection("sig-1")?;
+let decision = queries.decision_projection("dec-1")?;
+let signal_timeline = queries.timeline_for_signal("sig-1")?;
+let correlation_timeline = queries.timeline_for_correlation("corr-1")?;
+let confirmed = queries.confirmed_signals()?;
+let with_fills = queries.decisions_with_fills()?;
+```
+
+Mantiene alcance pequeño:
+
+- lee desde el store local JSONL existente
+- reconstruye projections en memoria cuando hace falta
+- no añade índices persistentes
+- no añade caché
+- no introduce red, async ni integración runtime
