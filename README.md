@@ -92,3 +92,29 @@ La rehidratación:
 - deserializa `payload: serde_json::Value` al tipo concreto
 - reconstruye `EventEnvelope<T>`
 - vuelve a validar invariantes y payload
+
+## Projections v1
+
+El crate expone projections mínimas en `src/projections/` construidas desde `&[StoredEvent]`:
+
+```rust
+use twoexcamim::projections::{
+    build_decision_projections, build_signal_projections, timeline_for_correlation_id,
+};
+use twoexcamim::store::StoredEvent;
+
+let events: Vec<StoredEvent> = /* replay del store */;
+
+let signal_views = build_signal_projections(&events)?;
+let decision_views = build_decision_projections(&events)?;
+let correlation_timeline = timeline_for_correlation_id(&events, "corr-1");
+```
+
+Incluye:
+
+- timeline lineal sin reordenación adicional
+- filtro por `correlation_id`, `signal_id` y `decision_id`
+- `SignalProjection` mínima derivada de `signal.generated`, `signal.confirmed`, `veto.raised` y `decision.formed`
+- `DecisionProjection` mínima derivada de `decision.formed`, `veto.raised` y `fill.received`
+
+Las projections usan rehidratación tipada cuando hace falta y omiten eventos que no aportan al estado derivado.
