@@ -65,3 +65,30 @@ Características mínimas:
 - deduplica por `idempotency_key`
 - mantiene orden de escritura
 - soporta filtros simples en memoria por `event_type`, `correlation_id`, `signal_id` y `decision_id`
+
+## Codecs v1
+
+El crate expone rehidratación tipada desde `StoredEvent` en `src/codecs/`:
+
+```rust
+use twoexcamim::codecs::RehydratedEvent;
+use twoexcamim::store::StoredEvent;
+
+let stored: StoredEvent = /* leído del JSONL store */;
+let typed = RehydratedEvent::try_from(stored)?;
+
+match typed {
+    RehydratedEvent::SignalGenerated(event) => {
+        assert_eq!(event.event_type.as_str(), "signal.generated");
+        assert_eq!(event.payload.signal_id, "sig-1");
+    }
+    _ => {}
+}
+```
+
+La rehidratación:
+
+- decide el payload por `event_type`
+- deserializa `payload: serde_json::Value` al tipo concreto
+- reconstruye `EventEnvelope<T>`
+- vuelve a validar invariantes y payload
