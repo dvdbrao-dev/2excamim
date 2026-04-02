@@ -146,3 +146,34 @@ Mantiene alcance pequeño:
 - no añade índices persistentes
 - no añade caché
 - no introduce red, async ni integración runtime
+
+## Scenario Fixtures + Replay Harness v1
+
+El crate expone fixtures en Rust puro y un harness mínimo en `src/scenarios/` para ejecutar escenarios end-to-end sobre store + codecs + projections + queries:
+
+```rust
+use twoexcamim::scenarios::{load_fixture_named, ReplayHarness};
+use twoexcamim::store::JsonlEventStore;
+
+let fixture = load_fixture_named("confirmed_then_filled_signal")?;
+let store = JsonlEventStore::new("./var/scenario-events.jsonl")?;
+let harness = ReplayHarness::new(&store);
+
+let result = harness.run_fixture(&fixture)?;
+
+assert_eq!(result.total_events, 4);
+assert_eq!(result.confirmed_signals_count, 1);
+assert_eq!(result.decisions_with_fills_count, 1);
+```
+
+Incluye fixtures mínimas:
+
+- `confirmed_then_filled_signal`
+- `vetoed_signal_without_fill`
+- `decision_with_multiple_fills`
+
+El harness:
+
+- escribe eventos manteniendo su orden
+- reutiliza la deduplicación por `idempotency_key` del store
+- permite reejecutar la misma fixture sobre el mismo store sin duplicar eventos
