@@ -220,3 +220,43 @@ La capa application mantiene alcance pequeño:
 - expone projections y summary sin duplicar lógica
 - permite reejecutar fixtures conocidas por nombre
 - no introduce bus, red, runtime, base de datos ni async
+
+## Prediction Markets Research (Python Lab)
+
+2EXCAMIM incluye un laboratorio cuantitativo en Python ubicado en:
+
+`research_prediction_markets/`
+
+Propósito:
+
+- explorar señales experimentales para prediction markets
+- trabajar en modo offline y paper-first
+- producir outputs estructurados para consumo posterior por Rust
+
+Flujo:
+
+1. ingestión de Kalshi y Polymarket
+2. cálculo de features MVP
+3. generación de señales MVP
+4. export a Parquet
+
+Output actual:
+
+`research_prediction_markets/output/signals/latest_signals.parquet`
+
+Restricciones:
+
+- no ejecuta trades
+- no toma decisiones finales
+- no sustituye el runtime Rust
+- no contiene lógica de riesgo ni orquestación
+
+### Ejecución mínima
+
+```bash
+cd research_prediction_markets
+python3 -m venv .venv
+source .venv/bin/activate
+pip install requests pandas pyarrow
+python main.py
+```

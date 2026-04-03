@@ -9,3 +9,11 @@ target/
 research_prediction_markets/.venv/
 research_prediction_markets/**/__pycache__/
 research_prediction_markets/**/*.pyc
+
+# Prediction markets research
+research_prediction_markets/.venv/
+research_prediction_markets/**/__pycache__/
+research_prediction_markets/**/*.pyc
+research_prediction_markets/output/signals/latest_signals.parquet
+
+research_prediction_markets/output/signals/latest_signals.parquet
