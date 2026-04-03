@@ -1,3 +1,4 @@
+pub mod application;
 pub mod codecs;
 pub mod events;
 pub mod observability;
@@ -6,6 +7,7 @@ pub mod queries;
 pub mod scenarios;
 pub mod store;
 
+pub use application::*;
 pub use codecs::*;
 pub use events::*;
 pub use observability::*;

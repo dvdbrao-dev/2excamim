@@ -198,3 +198,25 @@ El summary mantiene alcance pequeño:
 - cuenta `fill.received`, quantity total y correlation IDs únicos
 - agrega conteos por tipo de evento con `EventType::as_str()`
 - no añade bus, red, runtime, base de datos ni async
+
+## Application Services v1
+
+El crate expone una capa mínima de servicios en `src/application/` para orquestar operaciones típicas sobre store + queries + observability + scenarios:
+
+```rust
+use twoexcamim::application::EventAppService;
+use twoexcamim::store::JsonlEventStore;
+
+let store = JsonlEventStore::new("./var/events.jsonl")?;
+let app = EventAppService::new(&store);
+
+let summary = app.current_summary()?;
+println!("{summary:?}");
+```
+
+La capa application mantiene alcance pequeño:
+
+- persiste `StoredEvent` o `EventEnvelope<T>` sobre el JSONL store existente
+- expone projections y summary sin duplicar lógica
+- permite reejecutar fixtures conocidas por nombre
+- no introduce bus, red, runtime, base de datos ni async
