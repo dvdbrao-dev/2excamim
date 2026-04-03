@@ -177,3 +177,24 @@ El harness:
 - escribe eventos manteniendo su orden
 - reutiliza la deduplicación por `idempotency_key` del store
 - permite reejecutar la misma fixture sobre el mismo store sin duplicar eventos
+
+## Observability Summary v1
+
+El crate expone un resumen operativo mínimo en `src/observability/` derivado del store local y de las projections existentes:
+
+```rust
+use twoexcamim::observability::summary_from_store;
+use twoexcamim::store::JsonlEventStore;
+
+let store = JsonlEventStore::new("./var/events.jsonl")?;
+let summary = summary_from_store(&store)?;
+
+println!("{summary:?}");
+```
+
+El summary mantiene alcance pequeño:
+
+- reutiliza `build_signal_projections` y `build_decision_projections`
+- cuenta `fill.received`, quantity total y correlation IDs únicos
+- agrega conteos por tipo de evento con `EventType::as_str()`
+- no añade bus, red, runtime, base de datos ni async
