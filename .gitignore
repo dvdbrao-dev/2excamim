@@ -4,3 +4,8 @@ target/
 .env
 
 .codex
+
+# Python research MVP
+research_prediction_markets/.venv/
+research_prediction_markets/**/__pycache__/
+research_prediction_markets/**/*.pyc
