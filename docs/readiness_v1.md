@@ -32,6 +32,14 @@ using typed statuses plus explicit reasons.
 - `Inconsistent`: the log exposes contradictions, such as instrument mismatches or upstream signal
   inconsistency.
 
+`Decision lineage / promotion boundary v1` refines this by exposing:
+
+- traced upstream signal references
+- traced hypothesis references when available
+- applicable vetoes
+- downstream fill observations
+- explicit reasons for `supported`, `weak`, `blocked`, or `inconsistent`
+
 ### Fill
 
 - `ReceivedWithSufficientReferences`: a `fill.received` exists and the referenced decision is

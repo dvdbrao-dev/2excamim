@@ -205,6 +205,8 @@ Traceability may be partial, but blank provided fields are not contractually acc
 - A confirmed `signal` can become eligible for `decision` formation if no veto blocks promotion.
 - A vetoed `signal` blocks promotion to `decision` while that veto remains semantically in force.
 - A `decision` represents formed intent, not execution.
+- A `decision` lineage is query-derived from current upstream references and observed downstream
+  evidence; it is not a separately persisted entity in v1.
 - A `fill` must not be treated as contractually healthy when its upstream lineage is absent,
   contradictory, or materially underspecified.
 - `fill.received` may carry an optional `decision_id` in the current model; this is an admitted

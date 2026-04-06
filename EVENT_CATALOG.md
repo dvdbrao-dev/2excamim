@@ -55,6 +55,8 @@ It only covers the existing event set:
 - Readiness is not persisted as an event in this slice.
 - `weak`, `blocked`, `insufficient`, and `inconsistent` results express what the current contract
   can and cannot justify from the available log.
+- `decision.formed` is also interpreted through a query-derived promotion boundary / lineage view:
+  upstream signal support, traced hypothesis, applicable vetoes, and downstream fill observation.
 
 ## Event Specifications
 

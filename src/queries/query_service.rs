@@ -6,8 +6,8 @@ use crate::{
 };
 
 use super::{
-    decision_readiness, fill_readiness, signal_readiness, DecisionReadiness, FillReadiness,
-    QueryError, SignalReadiness,
+    decision_lineage, decision_readiness, fill_readiness, signal_readiness, DecisionLineageReport,
+    DecisionReadiness, FillReadiness, QueryError, SignalReadiness,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -102,6 +102,14 @@ impl<'a> QueryService<'a> {
     ) -> Result<Option<DecisionReadiness>, QueryError> {
         let events = self.all_events()?;
         decision_readiness(&events, decision_id)
+    }
+
+    pub fn decision_lineage(
+        &self,
+        decision_id: &str,
+    ) -> Result<Option<DecisionLineageReport>, QueryError> {
+        let events = self.all_events()?;
+        decision_lineage(&events, decision_id)
     }
 
     pub fn fill_readiness(&self, fill_id: &str) -> Result<Option<FillReadiness>, QueryError> {
