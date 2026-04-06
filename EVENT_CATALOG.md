@@ -57,6 +57,8 @@ It only covers the existing event set:
   can and cannot justify from the available log.
 - `decision.formed` is also interpreted through a query-derived promotion boundary / lineage view:
   upstream signal support, traced hypothesis, applicable vetoes, and downstream fill observation.
+- `fill.received` also participates in a query-derived execution boundary view that interprets only
+  observed linkage to decisions and external `order_id` references.
 
 ## Event Specifications
 

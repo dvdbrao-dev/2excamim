@@ -207,6 +207,9 @@ Traceability may be partial, but blank provided fields are not contractually acc
 - A `decision` represents formed intent, not execution.
 - A `decision` lineage is query-derived from current upstream references and observed downstream
   evidence; it is not a separately persisted entity in v1.
+- The boundary between `decision` and `fill` is also query-derived in v1: it reports observed
+  external `order_id` references and execution evidence without promoting `order` into a local
+  entity.
 - A `fill` must not be treated as contractually healthy when its upstream lineage is absent,
   contradictory, or materially underspecified.
 - `fill.received` may carry an optional `decision_id` in the current model; this is an admitted

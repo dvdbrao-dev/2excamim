@@ -40,6 +40,12 @@ using typed statuses plus explicit reasons.
 - downstream fill observations
 - explicit reasons for `supported`, `weak`, `blocked`, or `inconsistent`
 
+`Execution boundary v1` adds a narrower question on top:
+
+- whether a decision has observable execution evidence
+- which external `order_id` values are actually observed
+- whether a fill is clear, weak, blocked, or inconsistent relative to decision traceability
+
 ### Fill
 
 - `ReceivedWithSufficientReferences`: a `fill.received` exists and the referenced decision is
