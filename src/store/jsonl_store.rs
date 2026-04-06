@@ -3,10 +3,15 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
+use uuid::Uuid;
 
-use crate::events::{validation::Validate, EventEnvelope, EventType, Linkage, Provenance};
+use crate::events::{
+    validation::{validate_envelope, Validate},
+    DecisionFormed, EventEnvelope, EventType, EventTyped, FillReceived, HypothesisGenerated,
+    Linkage, Provenance, SignalConfirmed, SignalGenerated, VetoRaised, VetoScope,
+};
 
 use super::error::StoreError;
 
@@ -27,7 +32,12 @@ pub struct StoredEvent {
 impl StoredEvent {
     pub fn validate(&self) -> Result<(), StoreError> {
         validate_required_string(&self.event_id, "event_id")?;
+        Uuid::parse_str(&self.event_id)
+            .map_err(|_| StoreError::invalid_data("event_id must be a valid UUID"))?;
         validate_required_string(&self.schema_version, "schema_version")?;
+        if self.schema_version != "v1" {
+            return Err(StoreError::invalid_data("schema_version must be v1"));
+        }
         validate_required_string(&self.produced_by, "produced_by")?;
         validate_required_string(&self.idempotency_key, "idempotency_key")?;
         validate_optional_string(self.aggregate_key.as_deref(), "aggregate_key")?;
@@ -37,8 +47,123 @@ impl StoredEvent {
         self.provenance
             .validate()
             .map_err(|error| StoreError::invalid_data(error.to_string()))?;
+        if !self.payload.is_object() {
+            return Err(StoreError::invalid_data("payload must be a JSON object"));
+        }
+
+        match self.event_type {
+            EventType::HypothesisGenerated => {
+                let payload = self.validate_typed_payload::<HypothesisGenerated>()?;
+                validate_matching_ref(
+                    self.linkage.hypothesis_id.as_deref(),
+                    Some(payload.hypothesis_id.as_str()),
+                    "linkage.hypothesis_id",
+                    "payload.hypothesis_id",
+                )?;
+            }
+            EventType::SignalGenerated => {
+                let payload = self.validate_typed_payload::<SignalGenerated>()?;
+                validate_matching_ref(
+                    self.linkage.signal_id.as_deref(),
+                    Some(payload.signal_id.as_str()),
+                    "linkage.signal_id",
+                    "payload.signal_id",
+                )?;
+                validate_matching_ref(
+                    self.linkage.hypothesis_id.as_deref(),
+                    payload.hypothesis_id.as_deref(),
+                    "linkage.hypothesis_id",
+                    "payload.hypothesis_id",
+                )?;
+            }
+            EventType::SignalConfirmed => {
+                let payload = self.validate_typed_payload::<SignalConfirmed>()?;
+                validate_matching_ref(
+                    self.linkage.signal_id.as_deref(),
+                    Some(payload.signal_id.as_str()),
+                    "linkage.signal_id",
+                    "payload.signal_id",
+                )?;
+            }
+            EventType::VetoRaised => {
+                let payload = self.validate_typed_payload::<VetoRaised>()?;
+                match payload.scope {
+                    VetoScope::Signal => validate_matching_ref(
+                        self.linkage.signal_id.as_deref(),
+                        Some(payload.target_id.as_str()),
+                        "linkage.signal_id",
+                        "payload.target_id",
+                    )?,
+                    VetoScope::Decision => validate_matching_ref(
+                        self.linkage.decision_id.as_deref(),
+                        Some(payload.target_id.as_str()),
+                        "linkage.decision_id",
+                        "payload.target_id",
+                    )?,
+                    VetoScope::Order => validate_matching_ref(
+                        self.linkage.order_id.as_deref(),
+                        Some(payload.target_id.as_str()),
+                        "linkage.order_id",
+                        "payload.target_id",
+                    )?,
+                    VetoScope::Global => {}
+                }
+            }
+            EventType::DecisionFormed => {
+                let payload = self.validate_typed_payload::<DecisionFormed>()?;
+                validate_matching_ref(
+                    self.linkage.decision_id.as_deref(),
+                    Some(payload.decision_id.as_str()),
+                    "linkage.decision_id",
+                    "payload.decision_id",
+                )?;
+            }
+            EventType::FillReceived => {
+                let payload = self.validate_typed_payload::<FillReceived>()?;
+                validate_matching_ref(
+                    self.linkage.order_id.as_deref(),
+                    Some(payload.order_id.as_str()),
+                    "linkage.order_id",
+                    "payload.order_id",
+                )?;
+                validate_matching_ref(
+                    self.linkage.decision_id.as_deref(),
+                    payload.decision_id.as_deref(),
+                    "linkage.decision_id",
+                    "payload.decision_id",
+                )?;
+            }
+        }
 
         Ok(())
+    }
+
+    fn validate_typed_payload<TPayload>(&self) -> Result<TPayload, StoreError>
+    where
+        TPayload: DeserializeOwned + Serialize + Clone + Validate + EventTyped,
+    {
+        let payload: TPayload = serde_json::from_value(self.payload.clone()).map_err(|error| {
+            StoreError::invalid_data(format!(
+                "payload does not match {} schema: {error}",
+                self.event_type.as_str()
+            ))
+        })?;
+        let envelope = EventEnvelope {
+            event_id: self.event_id.clone(),
+            event_type: self.event_type,
+            schema_version: self.schema_version.clone(),
+            occurred_at: self.occurred_at,
+            produced_by: self.produced_by.clone(),
+            idempotency_key: self.idempotency_key.clone(),
+            aggregate_key: self.aggregate_key.clone(),
+            linkage: self.linkage.clone(),
+            provenance: self.provenance.clone(),
+            payload: payload.clone(),
+        };
+
+        validate_envelope(&envelope)
+            .map_err(|error| StoreError::invalid_data(error.to_string()))?;
+        Ok(payload)
     }
 }
 
@@ -111,8 +236,15 @@ impl JsonlEventStore {
     pub fn append_event(&self, event: &StoredEvent) -> Result<bool, StoreError> {
         event.validate()?;
 
-        if self.exists_by_idempotency_key(&event.idempotency_key)? {
-            return Ok(false);
+        if let Some(existing) = self.find_existing_by_idempotency_key(&event.idempotency_key)? {
+            if existing.is_contractually_equivalent(event) {
+                return Ok(false);
+            }
+
+            return Err(StoreError::invalid_data(format!(
+                "conflicting event already exists for idempotency_key {}",
+                event.idempotency_key
+            )));
         }
 
         self.append_serialized(event)?;
@@ -124,11 +256,11 @@ impl JsonlEventStore {
             return Ok(0);
         }
 
-        let mut existing_keys = self
+        let mut existing_events = self
             .read_all()?
             .into_iter()
-            .map(|event| event.idempotency_key)
-            .collect::<std::collections::HashSet<_>>();
+            .map(|event| (event.idempotency_key.clone(), event))
+            .collect::<std::collections::HashMap<_, _>>();
         let mut file = OpenOptions::new()
             .append(true)
             .create(true)
@@ -138,11 +270,21 @@ impl JsonlEventStore {
         for event in events {
             event.validate()?;
 
-            if existing_keys.insert(event.idempotency_key.clone()) {
-                serde_json::to_writer(&mut file, event)?;
-                file.write_all(b"\n")?;
-                appended += 1;
+            if let Some(existing) = existing_events.get(&event.idempotency_key) {
+                if existing.is_contractually_equivalent(event) {
+                    continue;
+                }
+
+                return Err(StoreError::invalid_data(format!(
+                    "conflicting event already exists for idempotency_key {}",
+                    event.idempotency_key
+                )));
             }
+
+            serde_json::to_writer(&mut file, event)?;
+            file.write_all(b"\n")?;
+            existing_events.insert(event.idempotency_key.clone(), event.clone());
+            appended += 1;
         }
 
         file.flush()?;
@@ -236,6 +378,27 @@ impl JsonlEventStore {
         file.flush()?;
         Ok(())
     }
+
+    fn find_existing_by_idempotency_key(
+        &self,
+        idempotency_key: &str,
+    ) -> Result<Option<StoredEvent>, StoreError> {
+        Ok(self
+            .read_all()?
+            .into_iter()
+            .find(|event| event.idempotency_key == idempotency_key))
+    }
+}
+
+impl StoredEvent {
+    fn is_contractually_equivalent(&self, other: &Self) -> bool {
+        self.event_type == other.event_type
+            && self.schema_version == other.schema_version
+            && self.produced_by == other.produced_by
+            && self.aggregate_key == other.aggregate_key
+            && self.linkage == other.linkage
+            && self.payload == other.payload
+    }
 }
 
 fn ensure_store_file(path: &Path) -> Result<(), StoreError> {
@@ -260,6 +423,23 @@ fn validate_optional_string(value: Option<&str>, field: &str) -> Result<(), Stor
         if value.trim().is_empty() {
             return Err(StoreError::invalid_data(format!(
                 "{field} cannot be blank when provided"
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_matching_ref(
+    linkage_value: Option<&str>,
+    payload_value: Option<&str>,
+    linkage_field: &str,
+    payload_field: &str,
+) -> Result<(), StoreError> {
+    if let (Some(linkage_value), Some(payload_value)) = (linkage_value, payload_value) {
+        if linkage_value != payload_value {
+            return Err(StoreError::invalid_data(format!(
+                "{linkage_field} must match {payload_field}"
             )));
         }
     }
