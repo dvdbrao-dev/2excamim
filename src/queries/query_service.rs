@@ -5,7 +5,10 @@ use crate::{
     store::{JsonlEventStore, StoredEvent},
 };
 
-use super::QueryError;
+use super::{
+    decision_readiness, fill_readiness, signal_readiness, DecisionReadiness, FillReadiness,
+    QueryError, SignalReadiness,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct QueryService<'a> {
@@ -86,6 +89,24 @@ impl<'a> QueryService<'a> {
             .into_iter()
             .filter(|projection| projection.fills_count == 0)
             .collect())
+    }
+
+    pub fn signal_readiness(&self, signal_id: &str) -> Result<Option<SignalReadiness>, QueryError> {
+        let events = self.all_events()?;
+        signal_readiness(&events, signal_id)
+    }
+
+    pub fn decision_readiness(
+        &self,
+        decision_id: &str,
+    ) -> Result<Option<DecisionReadiness>, QueryError> {
+        let events = self.all_events()?;
+        decision_readiness(&events, decision_id)
+    }
+
+    pub fn fill_readiness(&self, fill_id: &str) -> Result<Option<FillReadiness>, QueryError> {
+        let events = self.all_events()?;
+        fill_readiness(&events, fill_id)
     }
 
     fn signal_projections(&self) -> Result<Vec<SignalProjection>, QueryError> {

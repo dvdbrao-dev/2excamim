@@ -49,6 +49,13 @@ It only covers the existing event set:
 - Replays with the same idempotency key and contract-equivalent content are tolerated as duplicates.
 - Consumers must treat event processing as at-least-once and be safe under duplicate delivery.
 
+### Derived readiness semantics
+
+- Readiness and lifecycle are derived by query-time interpretation of the current event log.
+- Readiness is not persisted as an event in this slice.
+- `weak`, `blocked`, `insufficient`, and `inconsistent` results express what the current contract
+  can and cannot justify from the available log.
+
 ## Event Specifications
 
 ### `hypothesis.generated`

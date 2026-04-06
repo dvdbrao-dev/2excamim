@@ -218,6 +218,9 @@ Traceability may be partial, but blank provided fields are not contractually acc
 
 ## Notes On Current Deliberate Boundaries
 
+- Readiness and lifecycle interpretation are query-derived from the event log in this phase; they
+  are not persisted as separate facts.
+- A readiness result is an interpretation layer over existing events, not a new event family.
 - No runtime scheduler semantics are part of this document.
 - No gateway behavior is specified here.
 - No risk engine policy is specified here beyond the existence of veto as an event.
