@@ -110,9 +110,7 @@ pub fn decision_execution_boundary(
     }
 
     let mut reasons = Vec::new();
-    let mut notes = vec![
-        "order_id is treated as an external observed reference, not a local entity".to_string(),
-    ];
+    let mut notes = Vec::new();
 
     if facts.formed {
         reasons.push(ExecutionBoundaryReason::DecisionFormedObserved);
@@ -157,7 +155,7 @@ pub fn decision_execution_boundary(
             order_ids: facts.order_ids.iter().cloned().collect(),
         });
         notes.push(
-            "multiple external order_ids point at the same decision; without a local order model this is ambiguous"
+            "multiple order_ids point at the same decision; without order lifecycle this stays ambiguous but not contractually inconsistent by itself"
                 .to_string(),
         );
     }
@@ -225,8 +223,7 @@ pub fn decision_execution_boundary(
     let inconsistent = reasons.iter().any(|reason| {
         matches!(
             reason,
-            ExecutionBoundaryReason::AmbiguousExternalOrderReferences { .. }
-                | ExecutionBoundaryReason::DecisionLineageInconsistent { .. }
+            ExecutionBoundaryReason::DecisionLineageInconsistent { .. }
                 | ExecutionBoundaryReason::FillDecisionInstrumentMismatch { .. }
                 | ExecutionBoundaryReason::DecisionNotFound { .. }
         )
@@ -238,14 +235,18 @@ pub fn decision_execution_boundary(
                 | ExecutionBoundaryReason::BlockedDecisionHasObservedFill { .. }
         )
     });
-    let clear = reasons.iter().any(|reason| {
-        matches!(
-            reason,
-            ExecutionBoundaryReason::DecisionLineageSupported { .. }
-        )
-    }) && !facts.fill_ids.is_empty()
+    let clear = facts.formed
+        && !facts.fill_ids.is_empty()
         && facts.order_ids.len() == 1
         && !facts.local_orders.is_empty()
+        && reasons.iter().all(|reason| {
+            !matches!(
+                reason,
+                ExecutionBoundaryReason::DecisionLineageBlocked { .. }
+                    | ExecutionBoundaryReason::DecisionLineageInconsistent { .. }
+                    | ExecutionBoundaryReason::DecisionNotFound { .. }
+            )
+        })
         && reasons.iter().all(|reason| {
             !matches!(
                 reason,
@@ -285,9 +286,7 @@ pub fn fill_execution_boundary(
     }
 
     let mut reasons = Vec::new();
-    let mut notes = vec![
-        "order_id is treated as an external observed reference, not a local entity".to_string(),
-    ];
+    let mut notes = Vec::new();
 
     if let Some(order_id) = facts.order_ids.iter().next() {
         if facts.decision_ids.is_empty() && facts.local_orders.is_empty() {
@@ -416,14 +415,17 @@ pub fn fill_execution_boundary(
             ExecutionBoundaryReason::DecisionLineageBlocked { .. }
         )
     });
-    let clear = reasons.iter().any(|reason| {
-        matches!(
-            reason,
-            ExecutionBoundaryReason::DecisionLineageSupported { .. }
-        )
-    }) && facts.decision_ids.len() == 1
+    let clear = facts.decision_ids.len() == 1
         && facts.order_ids.len() == 1
         && !facts.local_orders.is_empty()
+        && reasons.iter().all(|reason| {
+            !matches!(
+                reason,
+                ExecutionBoundaryReason::DecisionLineageBlocked { .. }
+                    | ExecutionBoundaryReason::DecisionLineageInconsistent { .. }
+                    | ExecutionBoundaryReason::DecisionNotFound { .. }
+            )
+        })
         && reasons.iter().all(|reason| {
             !matches!(
                 reason,

@@ -314,7 +314,7 @@ fn decision_with_multiple_coherent_fills_remains_clear() {
 }
 
 #[test]
-fn decision_with_conflicting_order_ids_is_inconsistent() {
+fn decision_with_multiple_order_ids_is_weak_without_true_contradiction() {
     let (store, path) = store_with_events(
         "decision-conflicting-orders",
         vec![
@@ -334,7 +334,7 @@ fn decision_with_conflicting_order_ids_is_inconsistent() {
         .unwrap()
         .unwrap();
 
-    assert_eq!(report.status, ExecutionBoundaryStatus::Inconsistent);
+    assert_eq!(report.status, ExecutionBoundaryStatus::Weak);
     assert!(report.reasons.iter().any(|reason| matches!(
         reason,
         ExecutionBoundaryReason::AmbiguousExternalOrderReferences { order_ids }
@@ -459,6 +459,11 @@ fn fill_without_decision_but_with_local_order_can_be_clear() {
         reason,
         ExecutionBoundaryReason::FillTracesViaLocalOrder { decision_id, order_id }
         if decision_id == "dec-1" && order_id == "ord-1"
+    )));
+    assert!(!report.reasons.iter().any(|reason| matches!(
+        reason,
+        ExecutionBoundaryReason::ExternalOrderReferenceOnly { .. }
+            | ExecutionBoundaryReason::MissingDecisionReference
     )));
     cleanup(&path);
 }

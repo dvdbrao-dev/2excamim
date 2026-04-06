@@ -3,8 +3,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::Utc;
 use twoexcamim::events::{
-    DecisionAction, DecisionFormed, EventEnvelope, FillReceived, FillSide, Linkage, Provenance,
-    SignalConfirmed, SignalGenerated, SignalSide, SourceKind, VetoRaised, VetoScope,
+    DecisionAction, DecisionFormed, EventEnvelope, FillReceived, FillSide, Linkage,
+    OrderRegistered, Provenance, SignalConfirmed, SignalGenerated, SignalSide, SourceKind,
+    VetoRaised, VetoScope,
 };
 use twoexcamim::queries::{DecisionLineageReason, DecisionLineageStatus, QueryService};
 use twoexcamim::store::{JsonlEventStore, StoredEvent};
@@ -186,6 +187,73 @@ fn make_fill_received(
                 price: 100.0,
                 venue: "binance".into(),
                 executed_at: Utc::now(),
+            },
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+fn make_fill_received_without_decision(
+    fill_id: &str,
+    order_id: &str,
+    instrument: &str,
+) -> StoredEvent {
+    StoredEvent::try_from(
+        EventEnvelope::new_fill_received(
+            "execution-gateway",
+            Some(instrument.into()),
+            Linkage {
+                order_id: Some(order_id.into()),
+                correlation_id: Some("corr-1".into()),
+                ..Linkage::default()
+            },
+            Provenance {
+                source_kind: SourceKind::ExecutionVenue,
+                source_ref: Some("binance".into()),
+                producer_run_id: Some("run-fill-1".into()),
+                actor: Some("venue".into()),
+                trace_id: Some("trace-fill-1".into()),
+                notes: None,
+            },
+            FillReceived {
+                fill_id: fill_id.into(),
+                decision_id: None,
+                order_id: order_id.into(),
+                instrument: instrument.into(),
+                side: FillSide::Buy,
+                quantity: 1.0,
+                price: 100.0,
+                venue: "binance".into(),
+                executed_at: Utc::now(),
+            },
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+fn make_order_registered(
+    order_id: &str,
+    decision_id: Option<&str>,
+    instrument: &str,
+) -> StoredEvent {
+    StoredEvent::try_from(
+        EventEnvelope::new_order_registered(
+            "decision-lineage",
+            Some(instrument.into()),
+            Linkage {
+                order_id: Some(order_id.into()),
+                decision_id: decision_id.map(str::to_string),
+                correlation_id: Some("corr-1".into()),
+                ..Linkage::default()
+            },
+            provenance(),
+            OrderRegistered {
+                order_id: order_id.into(),
+                decision_id: decision_id.map(str::to_string),
+                instrument: instrument.into(),
+                venue: "binance".into(),
             },
         )
         .unwrap(),
@@ -392,6 +460,7 @@ fn downstream_fill_is_included_without_creating_order_lifecycle() {
     assert_eq!(report.status, DecisionLineageStatus::Supported);
     assert_eq!(report.downstream_refs.fill_ids, vec!["fill-1".to_string()]);
     assert_eq!(report.downstream_refs.order_ids, vec!["ord-1".to_string()]);
+    assert!(report.downstream_refs.local_order_ids.is_empty());
     assert!(report.reasons.iter().any(|reason| matches!(
         reason,
         DecisionLineageReason::DownstreamFillObserved { fill_id, order_id }
@@ -425,5 +494,40 @@ fn fill_instrument_mismatch_makes_lineage_inconsistent() {
         DecisionLineageReason::FillInstrumentMismatch { fill_id, fill_instrument }
         if fill_id == "fill-1" && fill_instrument == "ETHUSDT"
     )));
+    cleanup(&path);
+}
+
+#[test]
+fn local_order_registration_enriches_decision_lineage() {
+    let (store, path) = store_with_events(
+        "local-order-lineage",
+        vec![
+            make_signal_generated("sig-1", Some("hyp-1")),
+            make_signal_confirmed("sig-1", Some("hyp-1")),
+            make_decision_formed(Some("sig-1"), "dec-1", Some("hyp-1"), "BTCUSDT"),
+            make_order_registered("ord-1", Some("dec-1"), "BTCUSDT"),
+            make_fill_received_without_decision("fill-1", "ord-1", "BTCUSDT"),
+        ],
+    );
+    let service = QueryService::new(&store);
+
+    let report = service.decision_lineage("dec-1").unwrap().unwrap();
+
+    assert_eq!(report.status, DecisionLineageStatus::Supported);
+    assert_eq!(report.downstream_refs.fill_ids, vec!["fill-1".to_string()]);
+    assert_eq!(report.downstream_refs.order_ids, vec!["ord-1".to_string()]);
+    assert_eq!(
+        report.downstream_refs.local_order_ids,
+        vec!["ord-1".to_string()]
+    );
+    assert!(report.reasons.iter().any(|reason| matches!(
+        reason,
+        DecisionLineageReason::LocalOrderRegistered { order_id, venue }
+        if order_id == "ord-1" && venue == "binance"
+    )));
+    assert!(report
+        .notes
+        .iter()
+        .any(|note| note.contains("local contractual support")));
     cleanup(&path);
 }

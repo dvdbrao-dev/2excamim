@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::{
     codecs::RehydratedEvent,
-    events::{DecisionFormed, EventEnvelope, FillReceived, VetoRaised, VetoScope},
+    events::{DecisionFormed, EventEnvelope, FillReceived, OrderRegistered, VetoRaised, VetoScope},
     store::StoredEvent,
 };
 
@@ -56,6 +56,10 @@ pub enum DecisionLineageReason {
         veto_id: String,
         reason_code: String,
     },
+    LocalOrderRegistered {
+        order_id: String,
+        venue: String,
+    },
     DownstreamFillObserved {
         fill_id: String,
         order_id: String,
@@ -78,6 +82,7 @@ pub struct DecisionUpstreamRefs {
 pub struct DecisionDownstreamRefs {
     pub fill_ids: Vec<String>,
     pub order_ids: Vec<String>,
+    pub local_order_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,6 +140,13 @@ pub fn decision_lineage(
         }
     }));
 
+    reasons.extend(facts.local_orders.iter().map(|order| {
+        DecisionLineageReason::LocalOrderRegistered {
+            order_id: order.payload.order_id.clone(),
+            venue: order.payload.venue.clone(),
+        }
+    }));
+
     reasons.extend(
         facts
             .fills
@@ -189,7 +201,13 @@ pub fn decision_lineage(
 
     if !facts.fills.is_empty() {
         notes.push(
-            "fill observation is downstream evidence only; order lifecycle remains out of scope in v1"
+            "fill observation is downstream external evidence; order lifecycle remains out of scope in v1"
+                .to_string(),
+        );
+    }
+    if !facts.local_orders.is_empty() {
+        notes.push(
+            "order.registered provides local contractual support for downstream execution traceability"
                 .to_string(),
         );
     }
@@ -260,6 +278,13 @@ pub fn decision_lineage(
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .collect(),
+            local_order_ids: facts
+                .local_orders
+                .iter()
+                .map(|order| order.payload.order_id.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect(),
         },
         notes,
     }))
@@ -280,6 +305,8 @@ struct DecisionLineageFacts {
     hypothesis_ids: BTreeSet<String>,
     decision_vetoes: Vec<EventEnvelope<VetoRaised>>,
     signal_vetoes: Vec<EventEnvelope<VetoRaised>>,
+    local_orders: Vec<EventEnvelope<OrderRegistered>>,
+    local_order_ids: BTreeSet<String>,
     fills: Vec<EventEnvelope<FillReceived>>,
     fill_instrument_mismatches: Vec<(String, String)>,
 }
@@ -295,6 +322,8 @@ fn collect_decision_lineage_facts(
         hypothesis_ids: BTreeSet::new(),
         decision_vetoes: Vec::new(),
         signal_vetoes: Vec::new(),
+        local_orders: Vec::new(),
+        local_order_ids: BTreeSet::new(),
         fills: Vec::new(),
         fill_instrument_mismatches: Vec::new(),
     };
@@ -321,9 +350,18 @@ fn collect_decision_lineage_facts(
                 facts.relevant = true;
                 facts.decision_vetoes.push(event);
             }
-            RehydratedEvent::FillReceived(event)
+            RehydratedEvent::OrderRegistered(event)
                 if event.payload.decision_id.as_deref() == Some(decision_id)
                     || event.linkage.decision_id.as_deref() == Some(decision_id) =>
+            {
+                facts.relevant = true;
+                facts.local_order_ids.insert(event.payload.order_id.clone());
+                facts.local_orders.push(event);
+            }
+            RehydratedEvent::FillReceived(event)
+                if event.payload.decision_id.as_deref() == Some(decision_id)
+                    || event.linkage.decision_id.as_deref() == Some(decision_id)
+                    || facts.local_order_ids.contains(&event.payload.order_id) =>
             {
                 facts.relevant = true;
                 if !formed_instruments.is_empty()
