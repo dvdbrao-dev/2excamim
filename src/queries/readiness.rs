@@ -490,6 +490,7 @@ fn collect_signal_facts(
                     facts.hypothesis_refs.insert(hypothesis_id);
                 }
             }
+            RehydratedEvent::OrderRegistered(_) => {}
             _ => {}
         }
     }
@@ -552,6 +553,7 @@ fn collect_decision_facts(
                     }
                 }
             }
+            RehydratedEvent::OrderRegistered(_) => {}
             _ => {}
         }
     }
@@ -601,6 +603,7 @@ fn collect_fill_facts(events: &[StoredEvent], fill_id: &str) -> Result<FillFacts
 
                 facts.fill_events.push(event);
             }
+            RehydratedEvent::OrderRegistered(_) => {}
             _ => {}
         }
     }

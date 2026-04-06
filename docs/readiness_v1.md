@@ -46,6 +46,12 @@ using typed statuses plus explicit reasons.
 - which external `order_id` values are actually observed
 - whether a fill is clear, weak, blocked, or inconsistent relative to decision traceability
 
+With `order.registered`, that boundary can also distinguish between:
+
+- purely external observed `order_id`
+- locally registered order traceability
+- fill support that is clear only because a local order entity bridges decision and fill
+
 ### Fill
 
 - `ReceivedWithSufficientReferences`: a `fill.received` exists and the referenced decision is

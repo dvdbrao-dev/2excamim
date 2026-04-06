@@ -1,7 +1,7 @@
 use chrono::Utc;
 use twoexcamim::events::{
-    EventEnvelope, EventError, FillReceived, FillSide, HypothesisGenerated, Linkage, Provenance,
-    SignalGenerated, SignalSide, SourceKind, VetoRaised, VetoScope,
+    EventEnvelope, EventError, FillReceived, FillSide, HypothesisGenerated, Linkage,
+    OrderRegistered, Provenance, SignalGenerated, SignalSide, SourceKind, VetoRaised, VetoScope,
 };
 use uuid::Uuid;
 
@@ -221,4 +221,27 @@ fn envelope_rejects_tampered_payload_idempotency_key() {
     assert!(
         matches!(err, EventError::InvariantError(message) if message.contains("idempotency_key"))
     );
+}
+
+#[test]
+fn order_registered_rejects_blank_instrument() {
+    let err = EventEnvelope::new_order_registered(
+        "execution-boundary",
+        None,
+        Linkage {
+            order_id: Some("ord-1".into()),
+            decision_id: Some("dec-1".into()),
+            ..linkage()
+        },
+        provenance(),
+        OrderRegistered {
+            order_id: "ord-1".into(),
+            decision_id: Some("dec-1".into()),
+            instrument: "".into(),
+            venue: "binance".into(),
+        },
+    )
+    .unwrap_err();
+
+    assert!(matches!(err, EventError::ValidationError(message) if message.contains("instrument")));
 }

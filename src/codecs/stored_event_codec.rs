@@ -4,7 +4,7 @@ use crate::{
     codecs::CodecError,
     events::{
         DecisionFormed, EventEnvelope, EventType, EventTyped, FillReceived, HypothesisGenerated,
-        SignalConfirmed, SignalGenerated, Validate, VetoRaised,
+        OrderRegistered, SignalConfirmed, SignalGenerated, Validate, VetoRaised,
     },
     store::StoredEvent,
 };
@@ -16,6 +16,7 @@ pub enum RehydratedEvent {
     SignalConfirmed(EventEnvelope<SignalConfirmed>),
     VetoRaised(EventEnvelope<VetoRaised>),
     DecisionFormed(EventEnvelope<DecisionFormed>),
+    OrderRegistered(EventEnvelope<OrderRegistered>),
     FillReceived(EventEnvelope<FillReceived>),
 }
 
@@ -27,6 +28,7 @@ impl RehydratedEvent {
             Self::SignalConfirmed(_) => EventType::SignalConfirmed,
             Self::VetoRaised(_) => EventType::VetoRaised,
             Self::DecisionFormed(_) => EventType::DecisionFormed,
+            Self::OrderRegistered(_) => EventType::OrderRegistered,
             Self::FillReceived(_) => EventType::FillReceived,
         }
     }
@@ -44,6 +46,7 @@ impl TryFrom<StoredEvent> for RehydratedEvent {
             EventType::SignalConfirmed => Ok(Self::SignalConfirmed(rehydrate_envelope(value)?)),
             EventType::VetoRaised => Ok(Self::VetoRaised(rehydrate_envelope(value)?)),
             EventType::DecisionFormed => Ok(Self::DecisionFormed(rehydrate_envelope(value)?)),
+            EventType::OrderRegistered => Ok(Self::OrderRegistered(rehydrate_envelope(value)?)),
             EventType::FillReceived => Ok(Self::FillReceived(rehydrate_envelope(value)?)),
         }
     }
@@ -67,6 +70,7 @@ impl TryFrom<&RehydratedEvent> for StoredEvent {
             RehydratedEvent::SignalConfirmed(event) => Self::try_from(event),
             RehydratedEvent::VetoRaised(event) => Self::try_from(event),
             RehydratedEvent::DecisionFormed(event) => Self::try_from(event),
+            RehydratedEvent::OrderRegistered(event) => Self::try_from(event),
             RehydratedEvent::FillReceived(event) => Self::try_from(event),
         }
     }

@@ -107,6 +107,42 @@ A decision is not an order.
 A decision is not proof of execution.
 If `decision_id` exists in both payload and linkage, both representations must agree.
 
+### order
+
+What it represents:
+A local contractual record that this system recognizes an order reference as part of its own
+operational trace.
+
+Kind:
+Entity, materialized through append-only events and reconstructed as a logical identity.
+
+Purpose:
+To close the semantic gap between formed intent and observed fills without introducing a full order
+lifecycle.
+
+Key attributes:
+`order_id`, optional `decision_id`, `instrument`, `venue`.
+
+Identity / ID authority:
+`order_id` is the local contractual identifier once registered by `order.registered`.
+In v1 the system may adopt an externally observed order reference as the local ID, but after
+registration that ID becomes the canonical local handle.
+
+Relationships:
+May reference one decision.
+May later be referenced by fills.
+Does not yet carry submission, amendment, cancellation, or completion lifecycle semantics.
+
+Lifecycle:
+Created by `order.registered`.
+No additional order lifecycle events are defined in this slice.
+
+Consistency notes:
+An order is not a fill.
+An order is not proof of execution by itself.
+If `decision_id` exists in both payload and linkage, both representations must agree.
+If `order_id` exists in both payload and linkage, both representations must agree.
+
 ### fill
 
 What it represents:
@@ -129,8 +165,8 @@ Authority belongs to the execution-facing producer.
 
 Relationships:
 May reference one decision.
-Must reference one `order_id`, but `order` is not yet a first-class contractual entity in this
-slice.
+Must reference one `order_id`, which may now be a local contractual entity when
+`order.registered` exists.
 
 Lifecycle:
 Created by `fill.received`.
@@ -139,8 +175,8 @@ No settlement, reconciliation, or position lifecycle is defined here.
 Consistency notes:
 A fill is execution evidence, not intent.
 A fill without a coherent upstream chain is contractually weak even if it is syntactically valid.
-Because `order` is not modeled yet, `fill` upstream sufficiency is intentionally documented as
-partially unresolved in this slice.
+Even with `order` introduced in v1, fill sufficiency remains intentionally partial because order
+lifecycle semantics are still absent.
 
 ### linkage record
 
@@ -210,13 +246,16 @@ Traceability may be partial, but blank provided fields are not contractually acc
 - The boundary between `decision` and `fill` is also query-derived in v1: it reports observed
   external `order_id` references and execution evidence without promoting `order` into a local
   entity.
+- `order.registered` introduces the minimum local order entity needed to trace `decision -> order ->
+  fill`.
+- `order` in v1 is a traceability entity, not a complete execution lifecycle.
 - A `fill` must not be treated as contractually healthy when its upstream lineage is absent,
   contradictory, or materially underspecified.
 - `fill.received` may carry an optional `decision_id` in the current model; this is an admitted
   limitation, not proof that missing decision linkage is semantically complete.
-- `order` does not yet exist as a first-class contractual entity in this model.
-- Because `order` is not modeled yet, `fill.order_id` is currently an external reference rather
-  than a locally governed entity ID.
+- `fill.order_id` may still be only an external reference when no local `order.registered` exists.
+- Multiple external or local order references for the same decision remain semantically weak or
+  inconsistent unless the current model can justify them.
 - `linkage` may help consumers reconstruct ancestry, but it must not disagree with payload
   references.
 - `provenance` explains source and trace, but does not authorize semantic promotion by itself.
@@ -226,6 +265,7 @@ Traceability may be partial, but blank provided fields are not contractually acc
 - Readiness and lifecycle interpretation are query-derived from the event log in this phase; they
   are not persisted as separate facts.
 - A readiness result is an interpretation layer over existing events, not a new event family.
+- `order` is now a first-class local entity, but only at the minimal registration layer.
 - No runtime scheduler semantics are part of this document.
 - No gateway behavior is specified here.
 - No risk engine policy is specified here beyond the existence of veto as an event.

@@ -146,7 +146,9 @@ pub fn build_signal_projections(
                     .or_else(|| event.linkage.correlation_id.clone());
                 projection.last_event_type = EventType::DecisionFormed;
             }
-            RehydratedEvent::HypothesisGenerated(_) | RehydratedEvent::FillReceived(_) => {}
+            RehydratedEvent::HypothesisGenerated(_)
+            | RehydratedEvent::OrderRegistered(_)
+            | RehydratedEvent::FillReceived(_) => {}
         }
     }
 

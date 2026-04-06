@@ -107,6 +107,33 @@ pub fn build_decision_projections(
                     .or_else(|| event.linkage.correlation_id.clone());
                 projection.last_event_type = EventType::FillReceived;
             }
+            RehydratedEvent::OrderRegistered(event) => {
+                let Some(decision_id) = event
+                    .payload
+                    .decision_id
+                    .clone()
+                    .or_else(|| event.linkage.decision_id.clone())
+                else {
+                    continue;
+                };
+                let projection = ensure_projection(
+                    &mut projections,
+                    &mut indexes,
+                    &decision_id,
+                    EventType::OrderRegistered,
+                );
+
+                projection.instrument = projection
+                    .instrument
+                    .clone()
+                    .or_else(|| Some(event.payload.instrument.clone()));
+                push_unique(&mut projection.order_ids, event.payload.order_id.clone());
+                projection.correlation_id = projection
+                    .correlation_id
+                    .clone()
+                    .or_else(|| event.linkage.correlation_id.clone());
+                projection.last_event_type = EventType::OrderRegistered;
+            }
             RehydratedEvent::VetoRaised(event) => {
                 if event.payload.scope != VetoScope::Decision {
                     continue;

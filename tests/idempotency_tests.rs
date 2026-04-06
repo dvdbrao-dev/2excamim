@@ -1,6 +1,7 @@
 use chrono::Utc;
 use twoexcamim::events::{
-    EventEnvelope, FillReceived, FillSide, Linkage, Provenance, SignalConfirmed, SourceKind,
+    EventEnvelope, FillReceived, FillSide, Linkage, OrderRegistered, Provenance, SignalConfirmed,
+    SourceKind,
 };
 
 fn provenance() -> Provenance {
@@ -86,4 +87,59 @@ fn fill_received_idempotency_is_deterministic() {
         event.idempotency_key,
         "fill.received:v1:binance:ord-7:fill-7"
     );
+}
+
+#[test]
+fn order_registered_idempotency_is_deterministic() {
+    let event_a = EventEnvelope::new_order_registered(
+        "execution-boundary",
+        Some("BTCUSDT".into()),
+        Linkage {
+            order_id: Some("ord-7".into()),
+            decision_id: Some("dec-7".into()),
+            ..Linkage::default()
+        },
+        Provenance {
+            source_kind: SourceKind::Runtime,
+            source_ref: Some("runtime://order-register".into()),
+            producer_run_id: Some("run-11".into()),
+            actor: Some("engine".into()),
+            trace_id: Some("trace-11".into()),
+            notes: None,
+        },
+        OrderRegistered {
+            order_id: "ord-7".into(),
+            decision_id: Some("dec-7".into()),
+            instrument: "BTCUSDT".into(),
+            venue: "binance".into(),
+        },
+    )
+    .unwrap();
+    let event_b = EventEnvelope::new_order_registered(
+        "execution-boundary",
+        Some("BTCUSDT".into()),
+        Linkage {
+            order_id: Some("ord-7".into()),
+            decision_id: None,
+            ..Linkage::default()
+        },
+        Provenance {
+            source_kind: SourceKind::Runtime,
+            source_ref: Some("runtime://order-register".into()),
+            producer_run_id: Some("run-12".into()),
+            actor: Some("engine".into()),
+            trace_id: Some("trace-12".into()),
+            notes: None,
+        },
+        OrderRegistered {
+            order_id: "ord-7".into(),
+            decision_id: None,
+            instrument: "BTCUSDT".into(),
+            venue: "binance".into(),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(event_a.idempotency_key, "order.registered:v1:binance:ord-7");
+    assert_eq!(event_a.idempotency_key, event_b.idempotency_key);
 }

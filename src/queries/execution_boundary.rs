@@ -1,10 +1,12 @@
 use std::collections::BTreeSet;
 
-use crate::{codecs::RehydratedEvent, events::EventEnvelope, store::StoredEvent};
-
-use super::{
-    decision_lineage, fill_readiness, DecisionLineageStatus, FillReadinessStatus, QueryError,
+use crate::{
+    codecs::RehydratedEvent,
+    events::{EventEnvelope, OrderRegistered},
+    store::StoredEvent,
 };
+
+use super::{decision_lineage, DecisionLineageStatus, QueryError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionBoundaryReport {
@@ -39,11 +41,18 @@ pub enum ExecutionBoundaryReason {
         fill_id: String,
         order_id: String,
     },
+    LocalOrderRegistered {
+        order_id: String,
+        venue: String,
+    },
     MultipleCoherentFillsObserved {
         count: usize,
         order_id: String,
     },
     NoExecutionObservedForDecision,
+    MissingLocalOrderRegistration {
+        order_id: String,
+    },
     DecisionLineageSupported {
         decision_id: String,
     },
@@ -58,6 +67,10 @@ pub enum ExecutionBoundaryReason {
     },
     FillTracesToDecision {
         decision_id: String,
+    },
+    FillTracesViaLocalOrder {
+        decision_id: String,
+        order_id: String,
     },
     MissingDecisionReference,
     ExternalOrderReferenceOnly {
@@ -80,6 +93,10 @@ pub enum ExecutionBoundaryReason {
     BlockedDecisionHasObservedFill {
         decision_id: String,
         fill_id: String,
+    },
+    LocalOrderReferencesMissingDecision {
+        order_id: String,
+        decision_id: String,
     },
 }
 
@@ -128,6 +145,13 @@ pub fn decision_execution_boundary(
         }
     }
 
+    reasons.extend(facts.local_orders.iter().map(|order| {
+        ExecutionBoundaryReason::LocalOrderRegistered {
+            order_id: order.payload.order_id.clone(),
+            venue: order.payload.venue.clone(),
+        }
+    }));
+
     if facts.order_ids.len() > 1 {
         reasons.push(ExecutionBoundaryReason::AmbiguousExternalOrderReferences {
             order_ids: facts.order_ids.iter().cloned().collect(),
@@ -136,6 +160,14 @@ pub fn decision_execution_boundary(
             "multiple external order_ids point at the same decision; without a local order model this is ambiguous"
                 .to_string(),
         );
+    }
+
+    for order_id in &facts.order_ids {
+        if !facts.local_order_ids.contains(order_id) {
+            reasons.push(ExecutionBoundaryReason::MissingLocalOrderRegistration {
+                order_id: order_id.clone(),
+            });
+        }
     }
 
     if !facts.instrument_mismatches.is_empty() {
@@ -212,7 +244,14 @@ pub fn decision_execution_boundary(
             ExecutionBoundaryReason::DecisionLineageSupported { .. }
         )
     }) && !facts.fill_ids.is_empty()
-        && facts.order_ids.len() == 1;
+        && facts.order_ids.len() == 1
+        && !facts.local_orders.is_empty()
+        && reasons.iter().all(|reason| {
+            !matches!(
+                reason,
+                ExecutionBoundaryReason::MissingLocalOrderRegistration { .. }
+            )
+        });
 
     let status = if inconsistent {
         ExecutionBoundaryStatus::Inconsistent
@@ -240,7 +279,7 @@ pub fn fill_execution_boundary(
     events: &[StoredEvent],
     fill_id: &str,
 ) -> Result<Option<ExecutionBoundaryReport>, QueryError> {
-    let facts = collect_fill_boundary_facts(events, fill_id)?;
+    let mut facts = collect_fill_boundary_facts(events, fill_id)?;
     if !facts.relevant {
         return Ok(None);
     }
@@ -251,24 +290,53 @@ pub fn fill_execution_boundary(
     ];
 
     if let Some(order_id) = facts.order_ids.iter().next() {
-        if facts.decision_ids.is_empty() {
+        if facts.decision_ids.is_empty() && facts.local_orders.is_empty() {
             reasons.push(ExecutionBoundaryReason::ExternalOrderReferenceOnly {
                 order_id: order_id.clone(),
             });
         }
     }
 
-    if facts.decision_ids.is_empty() {
-        reasons.push(ExecutionBoundaryReason::MissingDecisionReference);
-        notes.push(
-            "the fill is observable but the current model cannot trace it back to a decision"
-                .to_string(),
-        );
+    reasons.extend(facts.local_orders.iter().map(|order| {
+        ExecutionBoundaryReason::LocalOrderRegistered {
+            order_id: order.payload.order_id.clone(),
+            venue: order.payload.venue.clone(),
+        }
+    }));
+
+    if !facts.fill_had_direct_decision_ref {
+        if let Some(local_decision_id) = facts
+            .local_orders
+            .iter()
+            .find_map(|order| order.payload.decision_id.clone())
+        {
+            reasons.push(ExecutionBoundaryReason::FillTracesViaLocalOrder {
+                decision_id: local_decision_id.clone(),
+                order_id: facts.order_ids.iter().next().cloned().unwrap_or_default(),
+            });
+            facts.decision_ids.insert(local_decision_id);
+        } else if facts.decision_ids.is_empty() {
+            reasons.push(ExecutionBoundaryReason::MissingDecisionReference);
+            notes.push(
+                "the fill is observable but the current model cannot trace it back to a decision"
+                    .to_string(),
+            );
+        }
+    }
+
+    if facts.decision_ids.len() == 1 && facts.local_orders.is_empty() {
+        for order_id in &facts.order_ids {
+            reasons.push(ExecutionBoundaryReason::MissingLocalOrderRegistration {
+                order_id: order_id.clone(),
+            });
+        }
     } else if facts.decision_ids.len() > 1 {
         reasons.push(ExecutionBoundaryReason::AmbiguousDecisionReferences {
             decision_ids: facts.decision_ids.iter().cloned().collect(),
         });
-    } else {
+    }
+
+    if facts.decision_ids.len() == 1 {
         let decision_id = facts
             .decision_ids
             .iter()
@@ -279,20 +347,36 @@ pub fn fill_execution_boundary(
             decision_id: decision_id.clone(),
         });
 
-        match fill_readiness(events, fill_id)? {
-            Some(readiness) => match readiness.status {
-                FillReadinessStatus::ReceivedWithSufficientReferences => {
+        match decision_lineage(events, &decision_id)? {
+            Some(lineage) => match lineage.status {
+                DecisionLineageStatus::Supported => {
                     reasons.push(ExecutionBoundaryReason::DecisionLineageSupported { decision_id });
                 }
-                FillReadinessStatus::ReceivedButUpstreamInsufficient => {
+                DecisionLineageStatus::Weak => {
                     reasons.push(ExecutionBoundaryReason::DecisionLineageWeak { decision_id });
                 }
-                FillReadinessStatus::Inconsistent => {
+                DecisionLineageStatus::Blocked => {
+                    reasons.push(ExecutionBoundaryReason::DecisionLineageBlocked { decision_id });
+                }
+                DecisionLineageStatus::Inconsistent => {
                     reasons
                         .push(ExecutionBoundaryReason::DecisionLineageInconsistent { decision_id });
                 }
             },
             None => reasons.push(ExecutionBoundaryReason::DecisionNotFound { decision_id }),
+        }
+    }
+
+    for order in &facts.local_orders {
+        if let Some(decision_id) = order.payload.decision_id.clone() {
+            if decision_lineage(events, &decision_id)?.is_none() {
+                reasons.push(
+                    ExecutionBoundaryReason::LocalOrderReferencesMissingDecision {
+                        order_id: order.payload.order_id.clone(),
+                        decision_id,
+                    },
+                );
+            }
         }
     }
 
@@ -323,6 +407,7 @@ pub fn fill_execution_boundary(
                 | ExecutionBoundaryReason::DecisionLineageInconsistent { .. }
                 | ExecutionBoundaryReason::FillDecisionInstrumentMismatch { .. }
                 | ExecutionBoundaryReason::DecisionNotFound { .. }
+                | ExecutionBoundaryReason::LocalOrderReferencesMissingDecision { .. }
         )
     });
     let blocked = reasons.iter().any(|reason| {
@@ -337,7 +422,14 @@ pub fn fill_execution_boundary(
             ExecutionBoundaryReason::DecisionLineageSupported { .. }
         )
     }) && facts.decision_ids.len() == 1
-        && facts.order_ids.len() == 1;
+        && facts.order_ids.len() == 1
+        && !facts.local_orders.is_empty()
+        && reasons.iter().all(|reason| {
+            !matches!(
+                reason,
+                ExecutionBoundaryReason::MissingLocalOrderRegistration { .. }
+            )
+        });
 
     let status = if inconsistent {
         ExecutionBoundaryStatus::Inconsistent
@@ -367,6 +459,8 @@ struct DecisionBoundaryFacts {
     fill_ids: BTreeSet<String>,
     order_ids: BTreeSet<String>,
     fill_refs: Vec<(String, String)>,
+    local_order_ids: BTreeSet<String>,
+    local_orders: Vec<EventEnvelope<OrderRegistered>>,
     instrument_mismatches: Vec<(String, String, String)>,
 }
 
@@ -380,6 +474,8 @@ fn collect_decision_boundary_facts(
         fill_ids: BTreeSet::new(),
         order_ids: BTreeSet::new(),
         fill_refs: Vec::new(),
+        local_order_ids: BTreeSet::new(),
+        local_orders: Vec::new(),
         instrument_mismatches: Vec::new(),
     };
 
@@ -395,9 +491,22 @@ fn collect_decision_boundary_facts(
     }
 
     for stored in events {
+        if let RehydratedEvent::OrderRegistered(event) = RehydratedEvent::try_from(stored)? {
+            if event.payload.decision_id.as_deref() == Some(decision_id)
+                || event.linkage.decision_id.as_deref() == Some(decision_id)
+            {
+                facts.relevant = true;
+                facts.local_order_ids.insert(event.payload.order_id.clone());
+                facts.local_orders.push(event);
+            }
+        }
+    }
+
+    for stored in events {
         if let RehydratedEvent::FillReceived(event) = RehydratedEvent::try_from(stored)? {
             if event.payload.decision_id.as_deref() == Some(decision_id)
                 || event.linkage.decision_id.as_deref() == Some(decision_id)
+                || facts.local_order_ids.contains(&event.payload.order_id)
             {
                 facts.relevant = true;
                 facts.fill_ids.insert(event.payload.fill_id.clone());
@@ -428,6 +537,8 @@ struct FillBoundaryFacts {
     relevant: bool,
     decision_ids: BTreeSet<String>,
     order_ids: BTreeSet<String>,
+    local_orders: Vec<EventEnvelope<OrderRegistered>>,
+    fill_had_direct_decision_ref: bool,
     instrument_mismatches: Vec<(String, String, String)>,
 }
 
@@ -439,6 +550,8 @@ fn collect_fill_boundary_facts(
         relevant: false,
         decision_ids: BTreeSet::new(),
         order_ids: BTreeSet::new(),
+        local_orders: Vec::new(),
+        fill_had_direct_decision_ref: false,
         instrument_mismatches: Vec::new(),
     };
 
@@ -455,9 +568,27 @@ fn collect_fill_boundary_facts(
                     .clone()
                     .or_else(|| event.linkage.decision_id.clone())
                 {
+                    facts.fill_had_direct_decision_ref = true;
                     facts.decision_ids.insert(decision_id);
                 }
                 fill_instrument = Some(event.payload.instrument.clone());
+            }
+        }
+    }
+
+    for stored in events {
+        if let RehydratedEvent::OrderRegistered(event) = RehydratedEvent::try_from(stored)? {
+            if facts.order_ids.contains(&event.payload.order_id) {
+                facts.relevant = true;
+                if let Some(decision_id) = event
+                    .payload
+                    .decision_id
+                    .clone()
+                    .or_else(|| event.linkage.decision_id.clone())
+                {
+                    facts.decision_ids.insert(decision_id);
+                }
+                facts.local_orders.push(event);
             }
         }
     }

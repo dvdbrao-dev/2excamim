@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::events::{
     validation::{validate_envelope, Validate},
     DecisionFormed, EventEnvelope, EventType, EventTyped, FillReceived, HypothesisGenerated,
-    Linkage, Provenance, SignalConfirmed, SignalGenerated, VetoRaised, VetoScope,
+    Linkage, OrderRegistered, Provenance, SignalConfirmed, SignalGenerated, VetoRaised, VetoScope,
 };
 
 use super::error::StoreError;
@@ -114,6 +114,21 @@ impl StoredEvent {
                 validate_matching_ref(
                     self.linkage.decision_id.as_deref(),
                     Some(payload.decision_id.as_str()),
+                    "linkage.decision_id",
+                    "payload.decision_id",
+                )?;
+            }
+            EventType::OrderRegistered => {
+                let payload = self.validate_typed_payload::<OrderRegistered>()?;
+                validate_matching_ref(
+                    self.linkage.order_id.as_deref(),
+                    Some(payload.order_id.as_str()),
+                    "linkage.order_id",
+                    "payload.order_id",
+                )?;
+                validate_matching_ref(
+                    self.linkage.decision_id.as_deref(),
+                    payload.decision_id.as_deref(),
                     "linkage.decision_id",
                     "payload.decision_id",
                 )?;

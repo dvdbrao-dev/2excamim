@@ -3,8 +3,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::Utc;
 use twoexcamim::events::{
-    DecisionAction, DecisionFormed, EventEnvelope, FillReceived, FillSide, Linkage, Provenance,
-    SignalConfirmed, SignalGenerated, SignalSide, SourceKind, VetoRaised, VetoScope,
+    DecisionAction, DecisionFormed, EventEnvelope, FillReceived, FillSide, Linkage,
+    OrderRegistered, Provenance, SignalConfirmed, SignalGenerated, SignalSide, SourceKind,
+    VetoRaised, VetoScope,
 };
 use twoexcamim::queries::{
     ExecutionBoundaryReason, ExecutionBoundaryRefType, ExecutionBoundaryStatus, QueryService,
@@ -191,6 +192,41 @@ fn make_fill_received(
     .unwrap()
 }
 
+fn make_order_registered(
+    order_id: &str,
+    decision_id: Option<&str>,
+    instrument: &str,
+) -> StoredEvent {
+    StoredEvent::try_from(
+        EventEnvelope::new_order_registered(
+            "execution-boundary",
+            Some(instrument.into()),
+            Linkage {
+                order_id: Some(order_id.into()),
+                decision_id: decision_id.map(str::to_string),
+                correlation_id: Some("corr-1".into()),
+                ..Linkage::default()
+            },
+            Provenance {
+                source_kind: SourceKind::Runtime,
+                source_ref: Some("runtime://order-register".into()),
+                producer_run_id: Some("run-order-1".into()),
+                actor: Some("engine".into()),
+                trace_id: Some("trace-order-1".into()),
+                notes: None,
+            },
+            OrderRegistered {
+                order_id: order_id.into(),
+                decision_id: decision_id.map(str::to_string),
+                instrument: instrument.into(),
+                venue: "binance".into(),
+            },
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
 fn store_with_events(name: &str, events: Vec<StoredEvent>) -> (JsonlEventStore, PathBuf) {
     let path = temp_store_path(name);
     let store = JsonlEventStore::new(&path).unwrap();
@@ -231,6 +267,7 @@ fn decision_with_one_traceable_fill_is_clear() {
             make_signal_generated("sig-1"),
             make_signal_confirmed("sig-1"),
             make_decision_formed(Some("sig-1"), "dec-1", "BTCUSDT"),
+            make_order_registered("ord-1", Some("dec-1"), "BTCUSDT"),
             make_fill_received("fill-1", Some("dec-1"), "ord-1", "BTCUSDT"),
         ],
     );
@@ -255,6 +292,7 @@ fn decision_with_multiple_coherent_fills_remains_clear() {
             make_signal_generated("sig-1"),
             make_signal_confirmed("sig-1"),
             make_decision_formed(Some("sig-1"), "dec-1", "BTCUSDT"),
+            make_order_registered("ord-1", Some("dec-1"), "BTCUSDT"),
             make_fill_received("fill-1", Some("dec-1"), "ord-1", "BTCUSDT"),
             make_fill_received("fill-2", Some("dec-1"), "ord-1", "BTCUSDT"),
         ],
@@ -283,6 +321,8 @@ fn decision_with_conflicting_order_ids_is_inconsistent() {
             make_signal_generated("sig-1"),
             make_signal_confirmed("sig-1"),
             make_decision_formed(Some("sig-1"), "dec-1", "BTCUSDT"),
+            make_order_registered("ord-1", Some("dec-1"), "BTCUSDT"),
+            make_order_registered("ord-2", Some("dec-1"), "BTCUSDT"),
             make_fill_received("fill-1", Some("dec-1"), "ord-1", "BTCUSDT"),
             make_fill_received("fill-2", Some("dec-1"), "ord-2", "BTCUSDT"),
         ],
@@ -312,6 +352,7 @@ fn blocked_decision_with_observed_fill_is_blocked() {
             make_signal_confirmed("sig-1"),
             make_signal_veto("sig-1"),
             make_decision_formed(Some("sig-1"), "dec-1", "BTCUSDT"),
+            make_order_registered("ord-1", Some("dec-1"), "BTCUSDT"),
             make_fill_received("fill-1", Some("dec-1"), "ord-1", "BTCUSDT"),
         ],
     );
@@ -339,6 +380,7 @@ fn fill_with_traceable_decision_is_clear() {
             make_signal_generated("sig-1"),
             make_signal_confirmed("sig-1"),
             make_decision_formed(Some("sig-1"), "dec-1", "BTCUSDT"),
+            make_order_registered("ord-1", Some("dec-1"), "BTCUSDT"),
             make_fill_received("fill-1", Some("dec-1"), "ord-1", "BTCUSDT"),
         ],
     );
@@ -366,6 +408,80 @@ fn fill_with_only_external_order_reference_is_weak() {
     assert!(report.reasons.iter().any(|reason| matches!(
         reason,
         ExecutionBoundaryReason::ExternalOrderReferenceOnly { order_id } if order_id == "ord-1"
+    )));
+    cleanup(&path);
+}
+
+#[test]
+fn decision_with_registered_order_but_no_fill_remains_weak() {
+    let (store, path) = store_with_events(
+        "decision-registered-order-no-fill",
+        vec![
+            make_signal_generated("sig-1"),
+            make_signal_confirmed("sig-1"),
+            make_decision_formed(Some("sig-1"), "dec-1", "BTCUSDT"),
+            make_order_registered("ord-1", Some("dec-1"), "BTCUSDT"),
+        ],
+    );
+    let service = QueryService::new(&store);
+
+    let report = service
+        .decision_execution_boundary("dec-1")
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(report.status, ExecutionBoundaryStatus::Weak);
+    assert!(report.reasons.iter().any(|reason| matches!(
+        reason,
+        ExecutionBoundaryReason::LocalOrderRegistered { order_id, .. } if order_id == "ord-1"
+    )));
+    cleanup(&path);
+}
+
+#[test]
+fn fill_without_decision_but_with_local_order_can_be_clear() {
+    let (store, path) = store_with_events(
+        "fill-via-local-order",
+        vec![
+            make_signal_generated("sig-1"),
+            make_signal_confirmed("sig-1"),
+            make_decision_formed(Some("sig-1"), "dec-1", "BTCUSDT"),
+            make_order_registered("ord-1", Some("dec-1"), "BTCUSDT"),
+            make_fill_received("fill-1", None, "ord-1", "BTCUSDT"),
+        ],
+    );
+    let service = QueryService::new(&store);
+
+    let report = service.fill_execution_boundary("fill-1").unwrap().unwrap();
+
+    assert_eq!(report.status, ExecutionBoundaryStatus::Clear);
+    assert!(report.reasons.iter().any(|reason| matches!(
+        reason,
+        ExecutionBoundaryReason::FillTracesViaLocalOrder { decision_id, order_id }
+        if decision_id == "dec-1" && order_id == "ord-1"
+    )));
+    cleanup(&path);
+}
+
+#[test]
+fn fill_with_decision_but_without_local_order_registration_is_weak() {
+    let (store, path) = store_with_events(
+        "fill-missing-local-order",
+        vec![
+            make_signal_generated("sig-1"),
+            make_signal_confirmed("sig-1"),
+            make_decision_formed(Some("sig-1"), "dec-1", "BTCUSDT"),
+            make_fill_received("fill-1", Some("dec-1"), "ord-1", "BTCUSDT"),
+        ],
+    );
+    let service = QueryService::new(&store);
+
+    let report = service.fill_execution_boundary("fill-1").unwrap().unwrap();
+
+    assert_eq!(report.status, ExecutionBoundaryStatus::Weak);
+    assert!(report.reasons.iter().any(|reason| matches!(
+        reason,
+        ExecutionBoundaryReason::MissingLocalOrderRegistration { order_id } if order_id == "ord-1"
     )));
     cleanup(&path);
 }
