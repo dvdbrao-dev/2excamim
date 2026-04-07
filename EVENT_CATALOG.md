@@ -66,6 +66,8 @@ It only covers the existing event set:
   attempted for execution.
 - `fill.received` also participates in a query-derived execution boundary view that interprets only
   observed linkage to decisions and external `order_id` references.
+- `order_id` can also be inspected through an order-centric query layer that summarizes local
+  lifecycle state from `order.registered`, `order.submitted`, and `fill.received`.
 
 ### Order ID policy
 

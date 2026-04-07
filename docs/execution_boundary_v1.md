@@ -48,3 +48,5 @@ The report exposes:
   the model lacks a first-class order contract.
 - `governance_v1` reuses this boundary to decide whether a healthy decision remains eligible to
   advance or must be downgraded to `Weak`, `Blocked`, or `Inconsistent`.
+- `order_query_v1` complements this boundary by letting consumers inspect a single `order_id`
+  directly instead of starting from `decision_id` or `fill_id`.

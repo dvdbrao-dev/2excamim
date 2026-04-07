@@ -7,9 +7,9 @@ use crate::{
 
 use super::{
     decision_execution_boundary, decision_governance, decision_lineage, decision_readiness,
-    fill_execution_boundary, fill_readiness, signal_governance, signal_readiness,
+    fill_execution_boundary, fill_readiness, order_lifecycle, signal_governance, signal_readiness,
     DecisionGovernanceReport, DecisionLineageReport, DecisionReadiness, ExecutionBoundaryReport,
-    FillReadiness, QueryError, SignalGovernanceReport, SignalReadiness,
+    FillReadiness, OrderLifecycleReport, QueryError, SignalGovernanceReport, SignalReadiness,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -149,6 +149,14 @@ impl<'a> QueryService<'a> {
     ) -> Result<Option<ExecutionBoundaryReport>, QueryError> {
         let events = self.all_events()?;
         fill_execution_boundary(&events, fill_id)
+    }
+
+    pub fn order_lifecycle(
+        &self,
+        order_id: &str,
+    ) -> Result<Option<OrderLifecycleReport>, QueryError> {
+        let events = self.all_events()?;
+        order_lifecycle(&events, order_id)
     }
 
     fn signal_projections(&self) -> Result<Vec<SignalProjection>, QueryError> {

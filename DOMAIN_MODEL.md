@@ -272,6 +272,8 @@ Traceability may be partial, but blank provided fields are not contractually acc
   are not persisted as separate facts.
 - A readiness result is an interpretation layer over existing events, not a new event family.
 - A governance result is also an interpretation layer over existing events, not a new event family.
+- An order-centric lifecycle result is also query-derived in v1: it reports whether an `order_id`
+  is merely registered, submitted, observed with fills, weak, or inconsistent.
 - `order` is now a first-class local entity, but only at the minimal registration layer.
 - No runtime scheduler semantics are part of this document.
 - No gateway behavior is specified here.

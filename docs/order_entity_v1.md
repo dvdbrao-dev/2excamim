@@ -41,3 +41,5 @@ The entity is created by:
 - No lifecycle beyond registration and submission is defined in v1.
 - Multiple orders for the same decision remain semantically limited until a fuller order model
   exists.
+- `order_query_v1` provides a derived inspection surface for `order_id`, but it does not create a
+  new persisted order state machine.
