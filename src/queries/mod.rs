@@ -1,6 +1,7 @@
 mod decision_lineage;
 mod error;
 mod execution_boundary;
+mod governance;
 mod query_service;
 mod readiness;
 
@@ -12,6 +13,11 @@ pub use error::QueryError;
 pub use execution_boundary::{
     decision_execution_boundary, fill_execution_boundary, ExecutionBoundaryReason,
     ExecutionBoundaryRefType, ExecutionBoundaryReport, ExecutionBoundaryStatus,
+};
+pub use governance::{
+    decision_governance, signal_governance, DecisionGovernanceReason, DecisionGovernanceReport,
+    GovernanceRef, GovernanceRefType, GovernanceStatus, SignalGovernanceReason,
+    SignalGovernanceReport,
 };
 pub use query_service::QueryService;
 pub use readiness::{

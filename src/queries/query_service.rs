@@ -6,9 +6,10 @@ use crate::{
 };
 
 use super::{
-    decision_execution_boundary, decision_lineage, decision_readiness, fill_execution_boundary,
-    fill_readiness, signal_readiness, DecisionLineageReport, DecisionReadiness,
-    ExecutionBoundaryReport, FillReadiness, QueryError, SignalReadiness,
+    decision_execution_boundary, decision_governance, decision_lineage, decision_readiness,
+    fill_execution_boundary, fill_readiness, signal_governance, signal_readiness,
+    DecisionGovernanceReport, DecisionLineageReport, DecisionReadiness, ExecutionBoundaryReport,
+    FillReadiness, QueryError, SignalGovernanceReport, SignalReadiness,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -97,12 +98,28 @@ impl<'a> QueryService<'a> {
         signal_readiness(&events, signal_id)
     }
 
+    pub fn signal_governance(
+        &self,
+        signal_id: &str,
+    ) -> Result<Option<SignalGovernanceReport>, QueryError> {
+        let events = self.all_events()?;
+        signal_governance(&events, signal_id)
+    }
+
     pub fn decision_readiness(
         &self,
         decision_id: &str,
     ) -> Result<Option<DecisionReadiness>, QueryError> {
         let events = self.all_events()?;
         decision_readiness(&events, decision_id)
+    }
+
+    pub fn decision_governance(
+        &self,
+        decision_id: &str,
+    ) -> Result<Option<DecisionGovernanceReport>, QueryError> {
+        let events = self.all_events()?;
+        decision_governance(&events, decision_id)
     }
 
     pub fn decision_lineage(

@@ -240,6 +240,8 @@ Traceability may be partial, but blank provided fields are not contractually acc
 - A `signal` can exist without confirmation.
 - A confirmed `signal` can become eligible for `decision` formation if no veto blocks promotion.
 - A vetoed `signal` blocks promotion to `decision` while that veto remains semantically in force.
+- Governance is query-derived in v1: it classifies `signal` and `decision` as eligible, weak,
+  blocked, or inconsistent from the current log.
 - A `decision` represents formed intent, not execution.
 - A `decision` lineage is query-derived from current upstream references and observed downstream
   evidence; it is not a separately persisted entity in v1.
@@ -265,9 +267,11 @@ Traceability may be partial, but blank provided fields are not contractually acc
 - Readiness and lifecycle interpretation are query-derived from the event log in this phase; they
   are not persisted as separate facts.
 - A readiness result is an interpretation layer over existing events, not a new event family.
+- A governance result is also an interpretation layer over existing events, not a new event family.
 - `order` is now a first-class local entity, but only at the minimal registration layer.
 - No runtime scheduler semantics are part of this document.
 - No gateway behavior is specified here.
 - No risk engine policy is specified here beyond the existence of veto as an event.
 - No LLM-origin contract is defined here.
-- No new `order.*`, `promotion.*`, `freeze.*`, or `readiness.*` events are introduced here.
+- No new `order.*`, `promotion.*`, `freeze.*`, `governance.*`, or `readiness.*` events are
+  introduced here.

@@ -37,3 +37,5 @@ The report exposes:
 - Execution-boundary interpretation is handled separately in `execution_boundary_v1`; lineage keeps
   the upstream/downstream graph, while execution boundary focuses on the semantic seam between
   `decision.formed` and `fill.received`.
+- `governance_v1` composes this report with readiness and execution boundary rather than replacing
+  it.

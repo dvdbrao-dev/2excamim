@@ -52,6 +52,12 @@ With `order.registered`, that boundary can also distinguish between:
 - locally registered order traceability
 - fill support that is clear only because a local order entity bridges decision and fill
 
+`Governance v1` sits above these query layers and normalizes:
+
+- whether a `signal` is eligible, weak, blocked, or inconsistent for promotion
+- whether a `decision` is eligible, weak, blocked, or inconsistent for advancement
+- which refs support or block that result
+
 ### Fill
 
 - `ReceivedWithSufficientReferences`: a `fill.received` exists and the referenced decision is

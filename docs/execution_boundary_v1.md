@@ -41,3 +41,5 @@ The report exposes:
 - Multiple fills are acceptable when they remain coherent.
 - Multiple incompatible `order_id` references for the same decision are treated as ambiguous because
   the model lacks a first-class order contract.
+- `governance_v1` reuses this boundary to decide whether a healthy decision remains eligible to
+  advance or must be downgraded to `Weak`, `Blocked`, or `Inconsistent`.
