@@ -113,6 +113,10 @@ pub enum DecisionGovernanceReason {
         order_id: String,
         venue: String,
     },
+    LocalOrderSubmitted {
+        order_id: String,
+        venue: String,
+    },
     DownstreamFillObserved {
         fill_id: String,
         order_id: String,
@@ -330,6 +334,9 @@ pub fn decision_governance(
         for order_id in lineage.downstream_refs.local_order_ids {
             push_ref(&mut supporting_refs, order_id, GovernanceRefType::Order);
         }
+        for order_id in lineage.downstream_refs.submitted_order_ids {
+            push_ref(&mut supporting_refs, order_id, GovernanceRefType::Order);
+        }
         for fill_id in lineage.downstream_refs.fill_ids {
             push_ref(&mut supporting_refs, fill_id, GovernanceRefType::Fill);
         }
@@ -358,6 +365,9 @@ pub fn decision_governance(
                     reasons
                         .push(DecisionGovernanceReason::LocalOrderRegistered { order_id, venue });
                 }
+                DecisionLineageReason::LocalOrderSubmitted { order_id, venue } => {
+                    reasons.push(DecisionGovernanceReason::LocalOrderSubmitted { order_id, venue });
+                }
                 DecisionLineageReason::DownstreamFillObserved { fill_id, order_id } => {
                     reasons.push(DecisionGovernanceReason::DownstreamFillObserved {
                         fill_id,
@@ -379,6 +389,7 @@ pub fn decision_governance(
                 | DecisionLineageReason::UpstreamSignalGeneratedUnconfirmed { .. }
                 | DecisionLineageReason::UpstreamSignalBlocked { .. }
                 | DecisionLineageReason::UpstreamSignalInconsistent { .. }
+                | DecisionLineageReason::OrderSubmittedWithoutRegistration { .. }
                 | DecisionLineageReason::MissingUpstreamSignalReference
                 | DecisionLineageReason::ConflictingSignalReferences { .. } => {}
             }

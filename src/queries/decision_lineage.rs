@@ -2,7 +2,10 @@ use std::collections::BTreeSet;
 
 use crate::{
     codecs::RehydratedEvent,
-    events::{DecisionFormed, EventEnvelope, FillReceived, OrderRegistered, VetoRaised, VetoScope},
+    events::{
+        DecisionFormed, EventEnvelope, FillReceived, OrderRegistered, OrderSubmitted, VetoRaised,
+        VetoScope,
+    },
     store::StoredEvent,
 };
 
@@ -60,6 +63,13 @@ pub enum DecisionLineageReason {
         order_id: String,
         venue: String,
     },
+    LocalOrderSubmitted {
+        order_id: String,
+        venue: String,
+    },
+    OrderSubmittedWithoutRegistration {
+        order_id: String,
+    },
     DownstreamFillObserved {
         fill_id: String,
         order_id: String,
@@ -83,6 +93,7 @@ pub struct DecisionDownstreamRefs {
     pub fill_ids: Vec<String>,
     pub order_ids: Vec<String>,
     pub local_order_ids: Vec<String>,
+    pub submitted_order_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,6 +155,17 @@ pub fn decision_lineage(
         DecisionLineageReason::LocalOrderRegistered {
             order_id: order.payload.order_id.clone(),
             venue: order.payload.venue.clone(),
+        }
+    }));
+    reasons.extend(facts.submitted_orders.iter().map(|order| {
+        DecisionLineageReason::LocalOrderSubmitted {
+            order_id: order.payload.order_id.clone(),
+            venue: order.payload.venue.clone(),
+        }
+    }));
+    reasons.extend(facts.submitted_without_registration.iter().map(|order_id| {
+        DecisionLineageReason::OrderSubmittedWithoutRegistration {
+            order_id: order_id.clone(),
         }
     }));
 
@@ -211,6 +233,12 @@ pub fn decision_lineage(
                 .to_string(),
         );
     }
+    if !facts.submitted_orders.is_empty() {
+        notes.push(
+            "order.submitted adds local intent-to-execute evidence without implying gateway acceptance or completion"
+                .to_string(),
+        );
+    }
     if facts.hypothesis_ids.is_empty() {
         notes.push("no hypothesis is contractually traceable from the current lineage".to_string());
     }
@@ -228,6 +256,7 @@ pub fn decision_lineage(
                 | DecisionLineageReason::ConflictingSignalReferences { .. }
                 | DecisionLineageReason::ConflictingHypothesisReferences { .. }
                 | DecisionLineageReason::UpstreamSignalInconsistent { .. }
+                | DecisionLineageReason::OrderSubmittedWithoutRegistration { .. }
                 | DecisionLineageReason::FillInstrumentMismatch { .. }
         )
     });
@@ -285,6 +314,13 @@ pub fn decision_lineage(
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .collect(),
+            submitted_order_ids: facts
+                .submitted_orders
+                .iter()
+                .map(|order| order.payload.order_id.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect(),
         },
         notes,
     }))
@@ -307,6 +343,9 @@ struct DecisionLineageFacts {
     signal_vetoes: Vec<EventEnvelope<VetoRaised>>,
     local_orders: Vec<EventEnvelope<OrderRegistered>>,
     local_order_ids: BTreeSet<String>,
+    submitted_orders: Vec<EventEnvelope<OrderSubmitted>>,
+    submitted_order_ids: BTreeSet<String>,
+    submitted_without_registration: BTreeSet<String>,
     fills: Vec<EventEnvelope<FillReceived>>,
     fill_instrument_mismatches: Vec<(String, String)>,
 }
@@ -324,6 +363,9 @@ fn collect_decision_lineage_facts(
         signal_vetoes: Vec::new(),
         local_orders: Vec::new(),
         local_order_ids: BTreeSet::new(),
+        submitted_orders: Vec::new(),
+        submitted_order_ids: BTreeSet::new(),
+        submitted_without_registration: BTreeSet::new(),
         fills: Vec::new(),
         fill_instrument_mismatches: Vec::new(),
     };
@@ -358,10 +400,27 @@ fn collect_decision_lineage_facts(
                 facts.local_order_ids.insert(event.payload.order_id.clone());
                 facts.local_orders.push(event);
             }
-            RehydratedEvent::FillReceived(event)
+            RehydratedEvent::OrderSubmitted(event)
                 if event.payload.decision_id.as_deref() == Some(decision_id)
                     || event.linkage.decision_id.as_deref() == Some(decision_id)
                     || facts.local_order_ids.contains(&event.payload.order_id) =>
+            {
+                facts.relevant = true;
+                facts
+                    .submitted_order_ids
+                    .insert(event.payload.order_id.clone());
+                if !facts.local_order_ids.contains(&event.payload.order_id) {
+                    facts
+                        .submitted_without_registration
+                        .insert(event.payload.order_id.clone());
+                }
+                facts.submitted_orders.push(event);
+            }
+            RehydratedEvent::FillReceived(event)
+                if event.payload.decision_id.as_deref() == Some(decision_id)
+                    || event.linkage.decision_id.as_deref() == Some(decision_id)
+                    || facts.local_order_ids.contains(&event.payload.order_id)
+                    || facts.submitted_order_ids.contains(&event.payload.order_id) =>
             {
                 facts.relevant = true;
                 if !formed_instruments.is_empty()
@@ -377,6 +436,10 @@ fn collect_decision_lineage_facts(
             _ => {}
         }
     }
+
+    facts
+        .submitted_without_registration
+        .retain(|order_id| !facts.local_order_ids.contains(order_id));
 
     if !facts.signal_ids.is_empty() {
         for stored in events {

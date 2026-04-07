@@ -32,8 +32,9 @@ The report exposes:
 - No new events or persistence are introduced.
 - No order lifecycle is implied by downstream fill observation.
 - Missing or partial upstream is reported honestly as weak, not guessed away.
-- `order.registered` may exist in parallel as a minimal local order entity, but lineage still avoids
-  pretending that a full order lifecycle exists.
+- `order.registered` may exist in parallel as a minimal local order entity.
+- `order.submitted` may also exist as minimal local submission evidence.
+- Lineage still avoids pretending that a full order lifecycle exists.
 - Execution-boundary interpretation is handled separately in `execution_boundary_v1`; lineage keeps
   the upstream/downstream graph, while execution boundary focuses on the semantic seam between
   `decision.formed` and `fill.received`.

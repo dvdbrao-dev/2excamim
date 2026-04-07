@@ -4,8 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::Utc;
 use twoexcamim::events::{
     DecisionAction, DecisionFormed, EventEnvelope, FillReceived, FillSide, Linkage,
-    OrderRegistered, Provenance, SignalConfirmed, SignalGenerated, SignalSide, SourceKind,
-    VetoRaised, VetoScope,
+    OrderRegistered, OrderSubmitted, Provenance, SignalConfirmed, SignalGenerated, SignalSide,
+    SourceKind, VetoRaised, VetoScope,
 };
 use twoexcamim::queries::{
     ExecutionBoundaryReason, ExecutionBoundaryRefType, ExecutionBoundaryStatus, QueryService,
@@ -227,6 +227,41 @@ fn make_order_registered(
     .unwrap()
 }
 
+fn make_order_submitted(
+    order_id: &str,
+    decision_id: Option<&str>,
+    instrument: &str,
+) -> StoredEvent {
+    StoredEvent::try_from(
+        EventEnvelope::new_order_submitted(
+            "execution-boundary",
+            Some(instrument.into()),
+            Linkage {
+                order_id: Some(order_id.into()),
+                decision_id: decision_id.map(str::to_string),
+                correlation_id: Some("corr-1".into()),
+                ..Linkage::default()
+            },
+            Provenance {
+                source_kind: SourceKind::Runtime,
+                source_ref: Some("runtime://order-submit".into()),
+                producer_run_id: Some("run-order-submit-1".into()),
+                actor: Some("engine".into()),
+                trace_id: Some("trace-order-submit-1".into()),
+                notes: None,
+            },
+            OrderSubmitted {
+                order_id: order_id.into(),
+                decision_id: decision_id.map(str::to_string),
+                instrument: instrument.into(),
+                venue: "binance".into(),
+            },
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
 fn store_with_events(name: &str, events: Vec<StoredEvent>) -> (JsonlEventStore, PathBuf) {
     let path = temp_store_path(name);
     let store = JsonlEventStore::new(&path).unwrap();
@@ -268,6 +303,7 @@ fn decision_with_one_traceable_fill_is_clear() {
             make_signal_confirmed("sig-1"),
             make_decision_formed(Some("sig-1"), "dec-1", "BTCUSDT"),
             make_order_registered("ord-1", Some("dec-1"), "BTCUSDT"),
+            make_order_submitted("ord-1", Some("dec-1"), "BTCUSDT"),
             make_fill_received("fill-1", Some("dec-1"), "ord-1", "BTCUSDT"),
         ],
     );
@@ -293,6 +329,7 @@ fn decision_with_multiple_coherent_fills_remains_clear() {
             make_signal_confirmed("sig-1"),
             make_decision_formed(Some("sig-1"), "dec-1", "BTCUSDT"),
             make_order_registered("ord-1", Some("dec-1"), "BTCUSDT"),
+            make_order_submitted("ord-1", Some("dec-1"), "BTCUSDT"),
             make_fill_received("fill-1", Some("dec-1"), "ord-1", "BTCUSDT"),
             make_fill_received("fill-2", Some("dec-1"), "ord-1", "BTCUSDT"),
         ],
@@ -381,6 +418,7 @@ fn fill_with_traceable_decision_is_clear() {
             make_signal_confirmed("sig-1"),
             make_decision_formed(Some("sig-1"), "dec-1", "BTCUSDT"),
             make_order_registered("ord-1", Some("dec-1"), "BTCUSDT"),
+            make_order_submitted("ord-1", Some("dec-1"), "BTCUSDT"),
             make_fill_received("fill-1", Some("dec-1"), "ord-1", "BTCUSDT"),
         ],
     );
@@ -447,6 +485,7 @@ fn fill_without_decision_but_with_local_order_can_be_clear() {
             make_signal_confirmed("sig-1"),
             make_decision_formed(Some("sig-1"), "dec-1", "BTCUSDT"),
             make_order_registered("ord-1", Some("dec-1"), "BTCUSDT"),
+            make_order_submitted("ord-1", Some("dec-1"), "BTCUSDT"),
             make_fill_received("fill-1", None, "ord-1", "BTCUSDT"),
         ],
     );

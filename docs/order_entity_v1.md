@@ -33,9 +33,11 @@ The entity is created by:
   amended, cancelled, or completed.
 - The event helps queries interpret whether a fill is merely externally observed or is backed by a
   locally registered order linked to a decision.
+- `order.submitted` now exists as the next minimal lifecycle step when local submission intent must
+  be represented.
 
 ## Limits
 
-- No lifecycle beyond registration is defined in v1.
+- No lifecycle beyond registration and submission is defined in v1.
 - Multiple orders for the same decision remain semantically limited until a fuller order model
   exists.

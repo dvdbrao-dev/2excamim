@@ -4,7 +4,7 @@ use crate::{
     codecs::CodecError,
     events::{
         DecisionFormed, EventEnvelope, EventType, EventTyped, FillReceived, HypothesisGenerated,
-        OrderRegistered, SignalConfirmed, SignalGenerated, Validate, VetoRaised,
+        OrderRegistered, OrderSubmitted, SignalConfirmed, SignalGenerated, Validate, VetoRaised,
     },
     store::StoredEvent,
 };
@@ -17,6 +17,7 @@ pub enum RehydratedEvent {
     VetoRaised(EventEnvelope<VetoRaised>),
     DecisionFormed(EventEnvelope<DecisionFormed>),
     OrderRegistered(EventEnvelope<OrderRegistered>),
+    OrderSubmitted(EventEnvelope<OrderSubmitted>),
     FillReceived(EventEnvelope<FillReceived>),
 }
 
@@ -29,6 +30,7 @@ impl RehydratedEvent {
             Self::VetoRaised(_) => EventType::VetoRaised,
             Self::DecisionFormed(_) => EventType::DecisionFormed,
             Self::OrderRegistered(_) => EventType::OrderRegistered,
+            Self::OrderSubmitted(_) => EventType::OrderSubmitted,
             Self::FillReceived(_) => EventType::FillReceived,
         }
     }
@@ -47,6 +49,7 @@ impl TryFrom<StoredEvent> for RehydratedEvent {
             EventType::VetoRaised => Ok(Self::VetoRaised(rehydrate_envelope(value)?)),
             EventType::DecisionFormed => Ok(Self::DecisionFormed(rehydrate_envelope(value)?)),
             EventType::OrderRegistered => Ok(Self::OrderRegistered(rehydrate_envelope(value)?)),
+            EventType::OrderSubmitted => Ok(Self::OrderSubmitted(rehydrate_envelope(value)?)),
             EventType::FillReceived => Ok(Self::FillReceived(rehydrate_envelope(value)?)),
         }
     }
@@ -71,6 +74,7 @@ impl TryFrom<&RehydratedEvent> for StoredEvent {
             RehydratedEvent::VetoRaised(event) => Self::try_from(event),
             RehydratedEvent::DecisionFormed(event) => Self::try_from(event),
             RehydratedEvent::OrderRegistered(event) => Self::try_from(event),
+            RehydratedEvent::OrderSubmitted(event) => Self::try_from(event),
             RehydratedEvent::FillReceived(event) => Self::try_from(event),
         }
     }

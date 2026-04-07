@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::{
     codecs::RehydratedEvent,
-    events::{EventEnvelope, OrderRegistered},
+    events::{EventEnvelope, OrderRegistered, OrderSubmitted},
     store::StoredEvent,
 };
 
@@ -16,6 +16,7 @@ pub struct ExecutionBoundaryReport {
     pub reasons: Vec<ExecutionBoundaryReason>,
     pub decision_refs: Vec<String>,
     pub observed_order_ids: Vec<String>,
+    pub submitted_order_ids: Vec<String>,
     pub observed_fill_ids: Vec<String>,
     pub notes: Vec<String>,
 }
@@ -45,12 +46,22 @@ pub enum ExecutionBoundaryReason {
         order_id: String,
         venue: String,
     },
+    LocalOrderSubmitted {
+        order_id: String,
+        venue: String,
+    },
     MultipleCoherentFillsObserved {
         count: usize,
         order_id: String,
     },
     NoExecutionObservedForDecision,
     MissingLocalOrderRegistration {
+        order_id: String,
+    },
+    MissingLocalOrderSubmission {
+        order_id: String,
+    },
+    SubmittedOrderWithoutRegistration {
         order_id: String,
     },
     DecisionLineageSupported {
@@ -149,13 +160,35 @@ pub fn decision_execution_boundary(
             venue: order.payload.venue.clone(),
         }
     }));
+    reasons.extend(facts.submitted_orders.iter().map(|order| {
+        ExecutionBoundaryReason::LocalOrderSubmitted {
+            order_id: order.payload.order_id.clone(),
+            venue: order.payload.venue.clone(),
+        }
+    }));
+    reasons.extend(facts.submitted_without_registration.iter().map(|order_id| {
+        ExecutionBoundaryReason::SubmittedOrderWithoutRegistration {
+            order_id: order_id.clone(),
+        }
+    }));
+    reasons.extend(facts.submitted_orders.iter().map(|order| {
+        ExecutionBoundaryReason::LocalOrderSubmitted {
+            order_id: order.payload.order_id.clone(),
+            venue: order.payload.venue.clone(),
+        }
+    }));
+    reasons.extend(facts.submitted_without_registration.iter().map(|order_id| {
+        ExecutionBoundaryReason::SubmittedOrderWithoutRegistration {
+            order_id: order_id.clone(),
+        }
+    }));
 
     if facts.order_ids.len() > 1 {
         reasons.push(ExecutionBoundaryReason::AmbiguousExternalOrderReferences {
             order_ids: facts.order_ids.iter().cloned().collect(),
         });
         notes.push(
-            "multiple order_ids point at the same decision; without order lifecycle this stays ambiguous but not contractually inconsistent by itself"
+            "multiple order_ids point at the same decision; with only minimal order lifecycle semantics this remains ambiguous"
                 .to_string(),
         );
     }
@@ -163,6 +196,11 @@ pub fn decision_execution_boundary(
     for order_id in &facts.order_ids {
         if !facts.local_order_ids.contains(order_id) {
             reasons.push(ExecutionBoundaryReason::MissingLocalOrderRegistration {
+                order_id: order_id.clone(),
+            });
+        }
+        if !facts.submitted_order_ids.contains(order_id) {
+            reasons.push(ExecutionBoundaryReason::MissingLocalOrderSubmission {
                 order_id: order_id.clone(),
             });
         }
@@ -226,6 +264,7 @@ pub fn decision_execution_boundary(
             ExecutionBoundaryReason::DecisionLineageInconsistent { .. }
                 | ExecutionBoundaryReason::FillDecisionInstrumentMismatch { .. }
                 | ExecutionBoundaryReason::DecisionNotFound { .. }
+                | ExecutionBoundaryReason::SubmittedOrderWithoutRegistration { .. }
         )
     });
     let blocked = reasons.iter().any(|reason| {
@@ -239,6 +278,7 @@ pub fn decision_execution_boundary(
         && !facts.fill_ids.is_empty()
         && facts.order_ids.len() == 1
         && !facts.local_orders.is_empty()
+        && !facts.submitted_orders.is_empty()
         && reasons.iter().all(|reason| {
             !matches!(
                 reason,
@@ -251,6 +291,7 @@ pub fn decision_execution_boundary(
             !matches!(
                 reason,
                 ExecutionBoundaryReason::MissingLocalOrderRegistration { .. }
+                    | ExecutionBoundaryReason::MissingLocalOrderSubmission { .. }
             )
         });
 
@@ -271,6 +312,7 @@ pub fn decision_execution_boundary(
         reasons,
         decision_refs: vec![decision_id.to_string()],
         observed_order_ids: facts.order_ids.iter().cloned().collect(),
+        submitted_order_ids: facts.submitted_order_ids.iter().cloned().collect(),
         observed_fill_ids: facts.fill_ids.iter().cloned().collect(),
         notes,
     }))
@@ -333,6 +375,13 @@ pub fn fill_execution_boundary(
         reasons.push(ExecutionBoundaryReason::AmbiguousDecisionReferences {
             decision_ids: facts.decision_ids.iter().cloned().collect(),
         });
+    }
+    if facts.decision_ids.len() == 1 && facts.submitted_orders.is_empty() {
+        for order_id in &facts.order_ids {
+            reasons.push(ExecutionBoundaryReason::MissingLocalOrderSubmission {
+                order_id: order_id.clone(),
+            });
+        }
     }
 
     if facts.decision_ids.len() == 1 {
@@ -407,6 +456,7 @@ pub fn fill_execution_boundary(
                 | ExecutionBoundaryReason::FillDecisionInstrumentMismatch { .. }
                 | ExecutionBoundaryReason::DecisionNotFound { .. }
                 | ExecutionBoundaryReason::LocalOrderReferencesMissingDecision { .. }
+                | ExecutionBoundaryReason::SubmittedOrderWithoutRegistration { .. }
         )
     });
     let blocked = reasons.iter().any(|reason| {
@@ -418,6 +468,7 @@ pub fn fill_execution_boundary(
     let clear = facts.decision_ids.len() == 1
         && facts.order_ids.len() == 1
         && !facts.local_orders.is_empty()
+        && !facts.submitted_orders.is_empty()
         && reasons.iter().all(|reason| {
             !matches!(
                 reason,
@@ -430,6 +481,7 @@ pub fn fill_execution_boundary(
             !matches!(
                 reason,
                 ExecutionBoundaryReason::MissingLocalOrderRegistration { .. }
+                    | ExecutionBoundaryReason::MissingLocalOrderSubmission { .. }
             )
         });
 
@@ -450,6 +502,7 @@ pub fn fill_execution_boundary(
         reasons,
         decision_refs: facts.decision_ids.iter().cloned().collect(),
         observed_order_ids: facts.order_ids.iter().cloned().collect(),
+        submitted_order_ids: facts.submitted_order_ids.iter().cloned().collect(),
         observed_fill_ids: vec![fill_id.to_string()],
         notes,
     }))
@@ -463,6 +516,9 @@ struct DecisionBoundaryFacts {
     fill_refs: Vec<(String, String)>,
     local_order_ids: BTreeSet<String>,
     local_orders: Vec<EventEnvelope<OrderRegistered>>,
+    submitted_order_ids: BTreeSet<String>,
+    submitted_orders: Vec<EventEnvelope<OrderSubmitted>>,
+    submitted_without_registration: BTreeSet<String>,
     instrument_mismatches: Vec<(String, String, String)>,
 }
 
@@ -478,6 +534,9 @@ fn collect_decision_boundary_facts(
         fill_refs: Vec::new(),
         local_order_ids: BTreeSet::new(),
         local_orders: Vec::new(),
+        submitted_order_ids: BTreeSet::new(),
+        submitted_orders: Vec::new(),
+        submitted_without_registration: BTreeSet::new(),
         instrument_mismatches: Vec::new(),
     };
 
@@ -505,10 +564,31 @@ fn collect_decision_boundary_facts(
     }
 
     for stored in events {
+        if let RehydratedEvent::OrderSubmitted(event) = RehydratedEvent::try_from(stored)? {
+            if event.payload.decision_id.as_deref() == Some(decision_id)
+                || event.linkage.decision_id.as_deref() == Some(decision_id)
+                || facts.local_order_ids.contains(&event.payload.order_id)
+            {
+                facts.relevant = true;
+                facts
+                    .submitted_order_ids
+                    .insert(event.payload.order_id.clone());
+                if !facts.local_order_ids.contains(&event.payload.order_id) {
+                    facts
+                        .submitted_without_registration
+                        .insert(event.payload.order_id.clone());
+                }
+                facts.submitted_orders.push(event);
+            }
+        }
+    }
+
+    for stored in events {
         if let RehydratedEvent::FillReceived(event) = RehydratedEvent::try_from(stored)? {
             if event.payload.decision_id.as_deref() == Some(decision_id)
                 || event.linkage.decision_id.as_deref() == Some(decision_id)
                 || facts.local_order_ids.contains(&event.payload.order_id)
+                || facts.submitted_order_ids.contains(&event.payload.order_id)
             {
                 facts.relevant = true;
                 facts.fill_ids.insert(event.payload.fill_id.clone());
@@ -532,6 +612,10 @@ fn collect_decision_boundary_facts(
         }
     }
 
+    facts
+        .submitted_without_registration
+        .retain(|order_id| !facts.local_order_ids.contains(order_id));
+
     Ok(facts)
 }
 
@@ -540,6 +624,9 @@ struct FillBoundaryFacts {
     decision_ids: BTreeSet<String>,
     order_ids: BTreeSet<String>,
     local_orders: Vec<EventEnvelope<OrderRegistered>>,
+    submitted_order_ids: BTreeSet<String>,
+    submitted_orders: Vec<EventEnvelope<OrderSubmitted>>,
+    submitted_without_registration: BTreeSet<String>,
     fill_had_direct_decision_ref: bool,
     instrument_mismatches: Vec<(String, String, String)>,
 }
@@ -553,6 +640,9 @@ fn collect_fill_boundary_facts(
         decision_ids: BTreeSet::new(),
         order_ids: BTreeSet::new(),
         local_orders: Vec::new(),
+        submitted_order_ids: BTreeSet::new(),
+        submitted_orders: Vec::new(),
+        submitted_without_registration: BTreeSet::new(),
         fill_had_direct_decision_ref: false,
         instrument_mismatches: Vec::new(),
     };
@@ -594,6 +684,42 @@ fn collect_fill_boundary_facts(
             }
         }
     }
+
+    for stored in events {
+        if let RehydratedEvent::OrderSubmitted(event) = RehydratedEvent::try_from(stored)? {
+            if facts.order_ids.contains(&event.payload.order_id) {
+                facts.relevant = true;
+                facts
+                    .submitted_order_ids
+                    .insert(event.payload.order_id.clone());
+                if !facts
+                    .local_orders
+                    .iter()
+                    .any(|order| order.payload.order_id == event.payload.order_id)
+                {
+                    facts
+                        .submitted_without_registration
+                        .insert(event.payload.order_id.clone());
+                }
+                if let Some(decision_id) = event
+                    .payload
+                    .decision_id
+                    .clone()
+                    .or_else(|| event.linkage.decision_id.clone())
+                {
+                    facts.decision_ids.insert(decision_id);
+                }
+                facts.submitted_orders.push(event);
+            }
+        }
+    }
+
+    facts.submitted_without_registration.retain(|order_id| {
+        !facts
+            .local_orders
+            .iter()
+            .any(|order| &order.payload.order_id == order_id)
+    });
 
     if let Some(fill_instrument) = fill_instrument {
         for decision_id in &facts.decision_ids {

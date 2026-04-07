@@ -1,7 +1,8 @@
 use chrono::Utc;
 use twoexcamim::events::{
     EventEnvelope, EventError, FillReceived, FillSide, HypothesisGenerated, Linkage,
-    OrderRegistered, Provenance, SignalGenerated, SignalSide, SourceKind, VetoRaised, VetoScope,
+    OrderRegistered, OrderSubmitted, Provenance, SignalGenerated, SignalSide, SourceKind,
+    VetoRaised, VetoScope,
 };
 use uuid::Uuid;
 
@@ -235,6 +236,29 @@ fn order_registered_rejects_blank_instrument() {
         },
         provenance(),
         OrderRegistered {
+            order_id: "ord-1".into(),
+            decision_id: Some("dec-1".into()),
+            instrument: "".into(),
+            venue: "binance".into(),
+        },
+    )
+    .unwrap_err();
+
+    assert!(matches!(err, EventError::ValidationError(message) if message.contains("instrument")));
+}
+
+#[test]
+fn order_submitted_rejects_blank_instrument() {
+    let err = EventEnvelope::new_order_submitted(
+        "execution-boundary",
+        None,
+        Linkage {
+            order_id: Some("ord-1".into()),
+            decision_id: Some("dec-1".into()),
+            ..linkage()
+        },
+        provenance(),
+        OrderSubmitted {
             order_id: "ord-1".into(),
             decision_id: Some("dec-1".into()),
             instrument: "".into(),

@@ -1,7 +1,7 @@
 use chrono::Utc;
 use twoexcamim::events::{
-    EventEnvelope, FillReceived, FillSide, Linkage, OrderRegistered, Provenance, SignalConfirmed,
-    SourceKind,
+    EventEnvelope, FillReceived, FillSide, Linkage, OrderRegistered, OrderSubmitted, Provenance,
+    SignalConfirmed, SourceKind,
 };
 
 fn provenance() -> Provenance {
@@ -141,5 +141,60 @@ fn order_registered_idempotency_is_deterministic() {
     .unwrap();
 
     assert_eq!(event_a.idempotency_key, "order.registered:v1:binance:ord-7");
+    assert_eq!(event_a.idempotency_key, event_b.idempotency_key);
+}
+
+#[test]
+fn order_submitted_idempotency_is_deterministic() {
+    let event_a = EventEnvelope::new_order_submitted(
+        "runtime",
+        Some("BTCUSDT".into()),
+        Linkage {
+            order_id: Some("ord-7".into()),
+            decision_id: Some("dec-7".into()),
+            ..Linkage::default()
+        },
+        Provenance {
+            source_kind: SourceKind::Runtime,
+            source_ref: Some("runtime://order-submit".into()),
+            producer_run_id: Some("run-13".into()),
+            actor: Some("engine".into()),
+            trace_id: Some("trace-13".into()),
+            notes: None,
+        },
+        OrderSubmitted {
+            order_id: "ord-7".into(),
+            decision_id: Some("dec-7".into()),
+            instrument: "BTCUSDT".into(),
+            venue: "binance".into(),
+        },
+    )
+    .unwrap();
+    let event_b = EventEnvelope::new_order_submitted(
+        "runtime",
+        Some("BTCUSDT".into()),
+        Linkage {
+            order_id: Some("ord-7".into()),
+            decision_id: None,
+            ..Linkage::default()
+        },
+        Provenance {
+            source_kind: SourceKind::Runtime,
+            source_ref: Some("runtime://order-submit".into()),
+            producer_run_id: Some("run-14".into()),
+            actor: Some("engine".into()),
+            trace_id: Some("trace-14".into()),
+            notes: None,
+        },
+        OrderSubmitted {
+            order_id: "ord-7".into(),
+            decision_id: None,
+            instrument: "BTCUSDT".into(),
+            venue: "binance".into(),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(event_a.idempotency_key, "order.submitted:v1:binance:ord-7");
     assert_eq!(event_a.idempotency_key, event_b.idempotency_key);
 }

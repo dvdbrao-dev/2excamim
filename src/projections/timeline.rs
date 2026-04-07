@@ -28,6 +28,7 @@ impl TimelineEvent for RehydratedEvent {
             Self::VetoRaised(event) => &event.linkage,
             Self::DecisionFormed(event) => &event.linkage,
             Self::OrderRegistered(event) => &event.linkage,
+            Self::OrderSubmitted(event) => &event.linkage,
             Self::FillReceived(event) => &event.linkage,
         }
     }

@@ -1,6 +1,7 @@
 use chrono::Utc;
 use twoexcamim::events::{
-    EventEnvelope, FillReceived, FillSide, HypothesisGenerated, Linkage, Provenance, SourceKind,
+    EventEnvelope, FillReceived, FillSide, HypothesisGenerated, Linkage, OrderSubmitted,
+    Provenance, SourceKind,
 };
 
 fn sample_linkage() -> Linkage {
@@ -88,4 +89,27 @@ fn fill_roundtrip_json() {
     assert_eq!(value["event_type"], "fill.received");
     assert_eq!(value["provenance"]["source_kind"], "ExecutionVenue");
     assert_eq!(value["linkage"]["correlation_id"], "corr-1");
+}
+
+#[test]
+fn order_submitted_roundtrip_json() {
+    let event = EventEnvelope::new_order_submitted(
+        "runtime",
+        Some("BTCUSDT".into()),
+        sample_linkage(),
+        sample_provenance(),
+        OrderSubmitted {
+            order_id: "ord-1".into(),
+            decision_id: Some("dec-1".into()),
+            instrument: "BTCUSDT".into(),
+            venue: "binance".into(),
+        },
+    )
+    .unwrap();
+
+    let value = serde_json::to_value(&event).unwrap();
+    let decoded: EventEnvelope<OrderSubmitted> = serde_json::from_value(value.clone()).unwrap();
+
+    assert_eq!(decoded, event);
+    assert_eq!(value["event_type"], "order.submitted");
 }

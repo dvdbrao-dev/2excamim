@@ -9,6 +9,7 @@ use crate::events::{
     hypothesis_generated::HypothesisGenerated,
     linkage::Linkage,
     order_registered::OrderRegistered,
+    order_submitted::OrderSubmitted,
     provenance::Provenance,
     signal_confirmed::SignalConfirmed,
     signal_generated::SignalGenerated,
@@ -30,6 +31,8 @@ pub enum EventType {
     DecisionFormed,
     #[serde(rename = "order.registered")]
     OrderRegistered,
+    #[serde(rename = "order.submitted")]
+    OrderSubmitted,
     #[serde(rename = "fill.received")]
     FillReceived,
 }
@@ -43,6 +46,7 @@ impl EventType {
             Self::VetoRaised => "veto.raised",
             Self::DecisionFormed => "decision.formed",
             Self::OrderRegistered => "order.registered",
+            Self::OrderSubmitted => "order.submitted",
             Self::FillReceived => "fill.received",
         }
     }
@@ -167,6 +171,18 @@ impl EventEnvelope<OrderRegistered> {
         linkage: Linkage,
         provenance: Provenance,
         payload: OrderRegistered,
+    ) -> Result<Self, EventError> {
+        Self::build(produced_by, aggregate_key, linkage, provenance, payload)
+    }
+}
+
+impl EventEnvelope<OrderSubmitted> {
+    pub fn new_order_submitted(
+        produced_by: impl Into<String>,
+        aggregate_key: Option<String>,
+        linkage: Linkage,
+        provenance: Provenance,
+        payload: OrderSubmitted,
     ) -> Result<Self, EventError> {
         Self::build(produced_by, aggregate_key, linkage, provenance, payload)
     }

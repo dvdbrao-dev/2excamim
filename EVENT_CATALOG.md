@@ -11,6 +11,7 @@ It only covers the existing event set:
 - `veto.raised`
 - `decision.formed`
 - `order.registered`
+- `order.submitted`
 - `fill.received`
 
 ## Cross-Cutting Rules v1
@@ -61,6 +62,8 @@ It only covers the existing event set:
 - `decision.formed` is also interpreted through a query-derived promotion boundary / lineage view:
   upstream signal support, traced hypothesis, applicable vetoes, and downstream fill observation.
 - `order.registered` introduces the minimum local contract for `order_id`.
+- `order.submitted` introduces the minimum local lifecycle evidence that a known order was actually
+  attempted for execution.
 - `fill.received` also participates in a query-derived execution boundary view that interprets only
   observed linkage to decisions and external `order_id` references.
 
@@ -69,6 +72,7 @@ It only covers the existing event set:
 - Before `order.registered`, `order_id` is only an external observed reference.
 - After `order.registered`, that `order_id` becomes a local contractual entity handle in this
   system.
+- After `order.submitted`, that same local order also carries minimum local submission intent.
 - `venue + order_id` is the minimum practical uniqueness scope in v1.
 
 ## Event Specifications
@@ -468,5 +472,65 @@ Blank order ID, blank instrument, blank venue, invalid UUID, contradictory `orde
 contradictory `decision_id`, conflicting replay under the same idempotency key.
 
 Future evolution notes:
-No `order.submitted`, `order.cancelled`, `order.completed`, or amendment lifecycle is introduced in
-this slice.
+`order.submitted` now exists as the next minimal lifecycle step.
+No `order.cancelled`, `order.completed`, or amendment lifecycle is introduced in this slice.
+
+### `order.submitted`
+
+Name:
+`order.submitted`
+
+Version:
+`v1`
+
+Producer:
+Execution-facing runtime or boundary producer.
+
+Expected consumers:
+Execution boundary queries, decision lineage readers, governance readers, replay, audit readers.
+
+Purpose:
+Record that a locally known order was actually submitted or intentionally sent for execution.
+
+Payload schema summary:
+`order_id`, optional `decision_id`, `instrument`, `venue`.
+
+Required fields:
+`order_id`, `instrument`, `venue`
+
+Optional fields:
+`decision_id`
+
+Timestamp semantics:
+`occurred_at` marks when the local system recorded the submission intent.
+It does not prove venue acceptance, matching, completion, or settlement.
+
+Idempotency expectations:
+Stable by `venue + order_id`.
+
+Ordering expectations:
+Should generally follow `order.registered` for the same local order.
+Should generally precede downstream fills when the local system observed submission before
+execution, but write-time historical enforcement is not introduced in this slice.
+
+Linkage keys:
+Should carry `order_id`.
+May carry `decision_id`, `signal_id`, `hypothesis_id`, `correlation_id`, `parent_event_id`.
+
+Provenance keys:
+Full provenance record is expected.
+
+Persistence requirements:
+Typed payload validation must succeed.
+Duplicated `order_id` and optional `decision_id` must not disagree between payload and linkage.
+
+Retry behavior:
+Retry with the same idempotency key.
+
+Failure modes:
+Blank order ID, blank instrument, blank venue, invalid UUID, contradictory `order_id`,
+contradictory `decision_id`, conflicting replay under the same idempotency key.
+
+Future evolution notes:
+This event captures only minimal submission intent.
+It does not introduce acceptance, rejection, cancellation, amendment, or completion semantics.

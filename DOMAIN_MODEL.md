@@ -130,11 +130,13 @@ registration that ID becomes the canonical local handle.
 
 Relationships:
 May reference one decision.
+May later be locally submitted for execution.
 May later be referenced by fills.
 Does not yet carry submission, amendment, cancellation, or completion lifecycle semantics.
 
 Lifecycle:
 Created by `order.registered`.
+May later be advanced by `order.submitted`.
 No additional order lifecycle events are defined in this slice.
 
 Consistency notes:
@@ -250,6 +252,8 @@ Traceability may be partial, but blank provided fields are not contractually acc
   entity.
 - `order.registered` introduces the minimum local order entity needed to trace `decision -> order ->
   fill`.
+- `order.submitted` adds the minimum local lifecycle evidence that the registered order was
+  actually attempted for execution.
 - `order` in v1 is a traceability entity, not a complete execution lifecycle.
 - A `fill` must not be treated as contractually healthy when its upstream lineage is absent,
   contradictory, or materially underspecified.
@@ -273,5 +277,5 @@ Traceability may be partial, but blank provided fields are not contractually acc
 - No gateway behavior is specified here.
 - No risk engine policy is specified here beyond the existence of veto as an event.
 - No LLM-origin contract is defined here.
-- No new `order.*`, `promotion.*`, `freeze.*`, `governance.*`, or `readiness.*` events are
-  introduced here.
+- No new `order.cancelled`, `order.rejected`, `order.completed`, `promotion.*`, `freeze.*`,
+  `governance.*`, or `readiness.*` events are introduced here.

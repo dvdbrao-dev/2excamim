@@ -50,7 +50,7 @@ better than `Blocked`.
 - Reuses `decision_execution_boundary` for decision-to-order-to-fill sufficiency.
 - A supported decision with healthy upstream remains `Eligible` even when no execution has been
   observed yet; that case is treated as pending boundary evidence, not as a blocker.
-- Observed downstream weakness, such as fills without local order registration, downgrades the
+- Observed downstream weakness, such as fills without local order submission, downgrades the
   decision to `Weak`.
 
 ## Current boundaries

@@ -148,6 +148,7 @@ pub fn build_signal_projections(
             }
             RehydratedEvent::HypothesisGenerated(_)
             | RehydratedEvent::OrderRegistered(_)
+            | RehydratedEvent::OrderSubmitted(_)
             | RehydratedEvent::FillReceived(_) => {}
         }
     }

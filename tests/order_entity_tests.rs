@@ -234,7 +234,7 @@ fn order_registered_improves_execution_boundary_for_decision_and_fill() {
         .unwrap();
     let fill_boundary = service.fill_execution_boundary("fill-1").unwrap().unwrap();
 
-    assert_eq!(decision_boundary.status, ExecutionBoundaryStatus::Clear);
-    assert_eq!(fill_boundary.status, ExecutionBoundaryStatus::Clear);
+    assert_eq!(decision_boundary.status, ExecutionBoundaryStatus::Weak);
+    assert_eq!(fill_boundary.status, ExecutionBoundaryStatus::Weak);
     cleanup(&path);
 }
