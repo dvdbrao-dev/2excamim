@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     codecs::RehydratedEvent,
     events::EventType,
@@ -9,7 +11,7 @@ use crate::{
 
 use super::ObservabilityError;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ObservabilitySummary {
     pub total_events: usize,
     pub total_signals: usize,

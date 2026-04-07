@@ -1,4 +1,5 @@
 pub mod application;
+pub mod batch_runner;
 pub mod codecs;
 pub mod commands;
 pub mod events;
@@ -12,6 +13,7 @@ pub mod scenarios;
 pub mod store;
 
 pub use application::*;
+pub use batch_runner::*;
 pub use codecs::*;
 pub use commands::{
     CommandError, ConfirmSignalCommand, FormDecisionCommand, GenerateSignalCommand,

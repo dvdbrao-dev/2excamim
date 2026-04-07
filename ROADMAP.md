@@ -69,3 +69,23 @@ Incluye:
 - evaluacion explicable sobre readiness, governance y promotion policy
 - `dry-run` y salida estructurada
 - persistencia prudente de `decision.formed` para casos claramente elegibles
+
+## Batch Runner v1
+
+Estado: implementado en version minima
+
+Incluye:
+
+- comando runtime `run batch`
+- encadenado manual y reproducible de:
+  - `ingest research-signals`
+  - `materialize decisions`
+  - `summary`
+- `dry-run`
+- report consolidado por fases
+- errores que identifican claramente la fase fallida
+
+Pendiente siguiente:
+
+- decidir si el batch runner merece perfiles o filtros adicionales
+- mantenerlo batch/manual sin convertirlo todavia en scheduler o daemon

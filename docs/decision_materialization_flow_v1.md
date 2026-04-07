@@ -34,6 +34,12 @@ JSON opcional:
 cargo run -- materialize decisions --store ./var/events.jsonl --dry-run --json
 ```
 
+Uso encadenado desde batch:
+
+```bash
+cargo run -- run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run
+```
+
 Errores JSON:
 
 - si se usa `--json`, los errores de runtime salen estructurados por `stderr`

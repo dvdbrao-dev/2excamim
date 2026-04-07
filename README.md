@@ -326,6 +326,7 @@ cargo run -- inspect signal sig-1
 cargo run -- policy signal sig-1
 cargo run -- ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run
 cargo run -- materialize decisions --dry-run
+cargo run -- run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run
 ```
 
 Notas operativas:
@@ -343,6 +344,32 @@ Detalle:
 - [`docs/runtime_operations_ux_v1.md`](/root/2excamim/docs/runtime_operations_ux_v1.md)
 - permite reejecutar fixtures conocidas por nombre
 - no introduce bus, red, runtime, base de datos ni async
+
+## Batch Runner v1
+
+El runtime ya puede encadenar en un solo comando la ingestión research, la materialización de decisiones y el summary final:
+
+```bash
+cargo run -- run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl
+```
+
+Dry run:
+
+```bash
+cargo run -- run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run
+```
+
+El report consolidado incluye:
+
+- resumen de ingestión
+- resumen de materialización
+- summary final
+- `success`
+- `dry_run`
+
+Detalle:
+
+- [`docs/batch_runner_v1.md`](/root/2excamim/docs/batch_runner_v1.md)
 
 ## Prediction Markets Research (Python Lab)
 

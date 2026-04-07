@@ -117,6 +117,12 @@ Inspeccion posterior:
 cargo run -- inspect signal <signal-id> --store ./var/events.jsonl
 ```
 
+Uso encadenado con batch runner:
+
+```bash
+cargo run -- run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run
+```
+
 ## Decodificacion de Parquet
 
 La frontera v1 mantiene el output research en su formato real actual: Parquet.

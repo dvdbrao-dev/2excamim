@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use serde_json::{json, Value};
 
 use crate::{
+    batch_runner::{run_batch, BatchRunOptions, BatchRunReport, BatchRunnerError},
     handoff::{
         ingest_research_signals_file, HandoffError, ResearchSignalIngestOptions,
         ResearchSignalIngestReport,
@@ -13,7 +14,7 @@ use crate::{
         materialize_decisions, DecisionMaterializationOptions, DecisionMaterializationReport,
         MaterializationError,
     },
-    observability::{summary_from_store, ObservabilityError},
+    observability::{summary_from_store, ObservabilityError, ObservabilitySummary},
     projections::{DecisionProjection, SignalProjection},
     queries::{
         DecisionGovernanceReport, DecisionLineageReport, DecisionPromotionReport,
@@ -45,6 +46,7 @@ enum Command {
     PolicyOrder { order_id: String },
     IngestResearchSignals { input_path: PathBuf },
     MaterializeDecisions,
+    RunBatch { research_signals_path: PathBuf },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,6 +70,7 @@ enum RuntimeError {
     Query(QueryError),
     Handoff(HandoffError),
     Materialization(MaterializationError),
+    Batch(BatchRunnerError),
     Observability(ObservabilityError),
     Io(io::Error),
     Json(serde_json::Error),
@@ -82,6 +85,7 @@ impl std::fmt::Display for RuntimeError {
             Self::Query(error) => write!(f, "{error}"),
             Self::Handoff(error) => write!(f, "{error}"),
             Self::Materialization(error) => write!(f, "{error}"),
+            Self::Batch(error) => write!(f, "{error}"),
             Self::Observability(error) => write!(f, "{error}"),
             Self::Io(error) => write!(f, "{error}"),
             Self::Json(error) => write!(f, "{error}"),
@@ -116,6 +120,12 @@ impl From<HandoffError> for RuntimeError {
 impl From<MaterializationError> for RuntimeError {
     fn from(value: MaterializationError) -> Self {
         Self::Materialization(value)
+    }
+}
+
+impl From<BatchRunnerError> for RuntimeError {
+    fn from(value: BatchRunnerError) -> Self {
+        Self::Batch(value)
     }
 }
 
@@ -188,6 +198,15 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError> {
             "--dry-run" => {
                 dry_run = true;
             }
+            "--research-signals" => {
+                positionals.push(arg);
+                let path = args.next().ok_or_else(|| {
+                    RuntimeError::Usage(
+                        "missing value for --research-signals\n\n".to_string() + &usage(),
+                    )
+                })?;
+                positionals.push(path);
+            }
             "-h" | "--help" => {
                 return Ok(ParseOutcome::Help);
             }
@@ -249,6 +268,13 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError> {
         [materialize, entity] if materialize == "materialize" && entity == "decisions" => {
             Command::MaterializeDecisions
         }
+        [run, batch, flag, path]
+            if run == "run" && batch == "batch" && flag == "--research-signals" =>
+        {
+            Command::RunBatch {
+                research_signals_path: PathBuf::from(path),
+            }
+        }
         _ => {
             return Err(RuntimeError::Usage(format!(
                 "invalid command\n\n{}",
@@ -267,7 +293,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError> {
 
 fn usage() -> String {
     format!(
-        "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim materialize decisions --dry-run --json\n\nDefault store path: {DEFAULT_STORE_PATH}"
+        "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n  twoexcamim run batch --research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim materialize decisions --dry-run --json\n  twoexcamim run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run\n\nDefault store path: {DEFAULT_STORE_PATH}"
     )
 }
 
@@ -275,11 +301,13 @@ fn execute(config: Config) -> Result<String, RuntimeError> {
     if config.dry_run
         && !matches!(
             config.command,
-            Command::IngestResearchSignals { .. } | Command::MaterializeDecisions
+            Command::IngestResearchSignals { .. }
+                | Command::MaterializeDecisions
+                | Command::RunBatch { .. }
         )
     {
         return Err(RuntimeError::Usage(
-            "--dry-run is only supported for ingest research-signals and materialize decisions"
+            "--dry-run is only supported for ingest research-signals, materialize decisions and run batch"
                 .to_string(),
         ));
     }
@@ -308,6 +336,67 @@ fn execute(config: Config) -> Result<String, RuntimeError> {
             render_research_signal_ingest(&store, &config, input_path)
         }
         Command::MaterializeDecisions => render_materialize_decisions(&query_service, &config),
+        Command::RunBatch {
+            ref research_signals_path,
+        } => render_batch_run(&store, &config, research_signals_path),
+    }
+}
+
+fn render_batch_run(
+    store: &JsonlEventStore,
+    config: &Config,
+    research_signals_path: &PathBuf,
+) -> Result<String, RuntimeError> {
+    let report = run_batch(
+        store,
+        research_signals_path,
+        BatchRunOptions {
+            dry_run: config.dry_run,
+        },
+    )?;
+
+    match config.format {
+        OutputFormat::Text => {
+            let mut lines = vec![
+                "Batch Run".to_string(),
+                format!("store_path: {}", report.store_path.display()),
+                format!(
+                    "research_signals_path: {}",
+                    report.research_signals_path.display()
+                ),
+                format!("dry_run: {}", report.dry_run),
+                format!("batch_trace_id: {}", report.batch_trace_id),
+                format!("success: {}", report.success),
+                "ingest:".to_string(),
+                format!("  rows_read: {}", report.ingest.rows_read),
+                format!("  rows_valid: {}", report.ingest.rows_valid),
+                format!("  rows_invalid: {}", report.ingest.rows_invalid),
+                format!("  events_written: {}", report.ingest.events_written),
+                format!("  duplicates: {}", report.ingest.duplicates),
+                "materialization:".to_string(),
+                format!(
+                    "  signals_inspected: {}",
+                    report.materialization.signals_inspected
+                ),
+                format!("  eligible: {}", report.materialization.eligible),
+                format!("  skipped: {}", report.materialization.skipped),
+                format!("  blocked: {}", report.materialization.blocked),
+                format!("  inconsistent: {}", report.materialization.inconsistent),
+                format!(
+                    "  decisions_materialized: {}",
+                    report.materialization.decisions_materialized
+                ),
+                format!("  duplicates: {}", report.materialization.duplicates),
+            ];
+
+            lines.extend(render_summary_section(
+                "final_summary:",
+                &report.final_summary,
+            ));
+
+            Ok(lines.join("\n"))
+        }
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(&batch_run_json(&report))?),
     }
 }
 
@@ -598,23 +687,10 @@ fn render_summary(store: &JsonlEventStore, config: &Config) -> Result<String, Ru
 
             Ok(lines.join("\n"))
         }
-        OutputFormat::Json => Ok(serde_json::to_string_pretty(&json!({
-            "kind": "summary",
-            "store_path": config.store_path.display().to_string(),
-            "summary": {
-                "total_events": summary.total_events,
-                "total_signals": summary.total_signals,
-                "total_decisions": summary.total_decisions,
-                "confirmed_signals": summary.confirmed_signals,
-                "vetoed_signals": summary.vetoed_signals,
-                "decisions_with_fills": summary.decisions_with_fills,
-                "decisions_without_fills": summary.decisions_without_fills,
-                "total_fills": summary.total_fills,
-                "total_filled_quantity": summary.total_filled_quantity,
-                "unique_correlation_ids": summary.unique_correlation_ids,
-                "event_counts_by_type": summary.event_counts_by_type,
-            }
-        }))?),
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(&summary_json(
+            &summary,
+            &config.store_path,
+        ))?),
     }
 }
 
@@ -1522,6 +1598,28 @@ fn decision_materialization_json(
     })
 }
 
+fn summary_json(summary: &ObservabilitySummary, store_path: &PathBuf) -> Value {
+    json!({
+        "kind": "summary",
+        "store_path": store_path.display().to_string(),
+        "summary": summary,
+    })
+}
+
+fn batch_run_json(report: &BatchRunReport) -> Value {
+    json!({
+        "kind": "batch_run",
+        "store_path": report.store_path.display().to_string(),
+        "research_signals_path": report.research_signals_path.display().to_string(),
+        "dry_run": report.dry_run,
+        "batch_trace_id": report.batch_trace_id,
+        "success": report.success,
+        "ingest": research_signal_ingest_json(&report.ingest, &report.store_path),
+        "materialization": decision_materialization_json(&report.materialization, &report.store_path),
+        "final_summary": summary_json(&report.final_summary, &report.store_path),
+    })
+}
+
 fn decision_materialization_item_json(
     item: &crate::materialization::DecisionMaterializationItem,
 ) -> Value {
@@ -1618,6 +1716,35 @@ where
         .unwrap_or_else(|| "none".to_string())
 }
 
+fn render_summary_section(title: &str, summary: &ObservabilitySummary) -> Vec<String> {
+    let mut lines = vec![
+        title.to_string(),
+        format!("  total_events: {}", summary.total_events),
+        format!("  total_signals: {}", summary.total_signals),
+        format!("  total_decisions: {}", summary.total_decisions),
+        format!("  confirmed_signals: {}", summary.confirmed_signals),
+        format!("  vetoed_signals: {}", summary.vetoed_signals),
+        format!("  decisions_with_fills: {}", summary.decisions_with_fills),
+        format!(
+            "  decisions_without_fills: {}",
+            summary.decisions_without_fills
+        ),
+        format!("  total_fills: {}", summary.total_fills),
+        format!("  total_filled_quantity: {}", summary.total_filled_quantity),
+        format!(
+            "  unique_correlation_ids: {}",
+            summary.unique_correlation_ids
+        ),
+        "  event_counts_by_type:".to_string(),
+    ];
+
+    for (event_type, count) in &summary.event_counts_by_type {
+        lines.push(format!("  - {event_type}: {count}"));
+    }
+
+    lines
+}
+
 fn exit_code_for_error(error: &RuntimeError) -> i32 {
     match error {
         RuntimeError::Usage(_) => 2,
@@ -1626,6 +1753,7 @@ fn exit_code_for_error(error: &RuntimeError) -> i32 {
         | RuntimeError::Query(_)
         | RuntimeError::Handoff(_)
         | RuntimeError::Materialization(_)
+        | RuntimeError::Batch(_)
         | RuntimeError::Observability(_)
         | RuntimeError::Io(_)
         | RuntimeError::Json(_) => 1,
