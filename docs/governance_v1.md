@@ -29,9 +29,9 @@ It answers, for `signal` and `decision`:
 - `Blocked`: veto or blocked upstream semantics prevent advancement.
 - `Inconsistent`: contradictory references or impossible semantics are visible in the log.
 
-`Frozen` is intentionally not modeled in v1.
-The current slice has no persisted freeze fact and no defensible derived freeze rule that would be
-better than `Blocked`.
+`Frozen` is intentionally not modeled inside governance itself in v1.
+That prudential wait-state now lives in `promotion_policy_v1`, which composes governance with
+execution-boundary and order-lifecycle semantics.
 
 ## Derivation rules
 

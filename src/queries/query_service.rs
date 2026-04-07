@@ -6,10 +6,12 @@ use crate::{
 };
 
 use super::{
-    decision_execution_boundary, decision_governance, decision_lineage, decision_readiness,
-    fill_execution_boundary, fill_readiness, order_lifecycle, signal_governance, signal_readiness,
-    DecisionGovernanceReport, DecisionLineageReport, DecisionReadiness, ExecutionBoundaryReport,
-    FillReadiness, OrderLifecycleReport, QueryError, SignalGovernanceReport, SignalReadiness,
+    decision_execution_boundary, decision_governance, decision_lineage, decision_promotion_policy,
+    decision_readiness, fill_execution_boundary, fill_readiness, order_lifecycle,
+    order_promotion_policy, signal_governance, signal_promotion_policy, signal_readiness,
+    DecisionGovernanceReport, DecisionLineageReport, DecisionPromotionReport, DecisionReadiness,
+    ExecutionBoundaryReport, FillReadiness, OrderLifecycleReport, OrderPromotionReport, QueryError,
+    SignalGovernanceReport, SignalPromotionReport, SignalReadiness,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -106,6 +108,14 @@ impl<'a> QueryService<'a> {
         signal_governance(&events, signal_id)
     }
 
+    pub fn signal_promotion_policy(
+        &self,
+        signal_id: &str,
+    ) -> Result<Option<SignalPromotionReport>, QueryError> {
+        let events = self.all_events()?;
+        signal_promotion_policy(&events, signal_id)
+    }
+
     pub fn decision_readiness(
         &self,
         decision_id: &str,
@@ -120,6 +130,14 @@ impl<'a> QueryService<'a> {
     ) -> Result<Option<DecisionGovernanceReport>, QueryError> {
         let events = self.all_events()?;
         decision_governance(&events, decision_id)
+    }
+
+    pub fn decision_promotion_policy(
+        &self,
+        decision_id: &str,
+    ) -> Result<Option<DecisionPromotionReport>, QueryError> {
+        let events = self.all_events()?;
+        decision_promotion_policy(&events, decision_id)
     }
 
     pub fn decision_lineage(
@@ -157,6 +175,14 @@ impl<'a> QueryService<'a> {
     ) -> Result<Option<OrderLifecycleReport>, QueryError> {
         let events = self.all_events()?;
         order_lifecycle(&events, order_id)
+    }
+
+    pub fn order_promotion_policy(
+        &self,
+        order_id: &str,
+    ) -> Result<Option<OrderPromotionReport>, QueryError> {
+        let events = self.all_events()?;
+        order_promotion_policy(&events, order_id)
     }
 
     fn signal_projections(&self) -> Result<Vec<SignalProjection>, QueryError> {

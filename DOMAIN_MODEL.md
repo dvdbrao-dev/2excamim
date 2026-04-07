@@ -274,6 +274,9 @@ Traceability may be partial, but blank provided fields are not contractually acc
 - A governance result is also an interpretation layer over existing events, not a new event family.
 - An order-centric lifecycle result is also query-derived in v1: it reports whether an `order_id`
   is merely registered, submitted, observed with fills, weak, or inconsistent.
+- A promotion / freeze policy result is also query-derived in v1: it reports whether a `signal`,
+  `decision`, or `order` is eligible, weak, blocked, frozen, or inconsistent for the next modeled
+  step.
 - `order` is now a first-class local entity, but only at the minimal registration layer.
 - No runtime scheduler semantics are part of this document.
 - No gateway behavior is specified here.

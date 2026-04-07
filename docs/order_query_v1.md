@@ -36,3 +36,5 @@ It exists to answer, with a small typed surface:
 - When exactly one `decision_id` is traceable, the report also adds note-level context from
   decision execution boundary and governance.
 - The report does not replace `execution_boundary_v1`; it gives a complementary order-first view.
+- `promotion_policy_v1` can sit above this report when a caller needs a policy answer instead of a
+  descriptive lifecycle answer.

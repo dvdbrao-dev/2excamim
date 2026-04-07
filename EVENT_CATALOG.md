@@ -59,6 +59,8 @@ It only covers the existing event set:
   can and cannot justify from the available log.
 - `signal` and `decision` are also interpreted through a query-derived governance layer that
   normalizes whether each entity is eligible, weak, blocked, or inconsistent for advancement.
+- `signal`, `decision`, and `order` can also be interpreted through a query-derived promotion /
+  freeze policy layer that adds a non-persisted `frozen` status for prudential wait states.
 - `decision.formed` is also interpreted through a query-derived promotion boundary / lineage view:
   upstream signal support, traced hypothesis, applicable vetoes, and downstream fill observation.
 - `order.registered` introduces the minimum local contract for `order_id`.

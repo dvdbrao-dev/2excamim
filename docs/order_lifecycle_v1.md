@@ -36,6 +36,8 @@ without introducing a gateway, orchestration runtime, or full order state machin
 - `execution_boundary` now treats `registered + fill` as weaker than `submitted + fill`.
 - `governance_v1` benefits indirectly through the refined execution boundary.
 - `order_query_v1` exposes a direct report by `order_id` for local lifecycle inspection.
+- `promotion_policy_v1` can interpret `registered` as a frozen wait-state and `submitted` as
+  eligible for execution follow-up, without persisting freeze facts.
 
 ## Current limits
 
