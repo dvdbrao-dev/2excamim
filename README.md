@@ -257,6 +257,12 @@ El runtime ya puede ingerir offline el output real del laboratorio Python y trad
 cargo run -- ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl
 ```
 
+Dry run:
+
+```bash
+cargo run -- ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run
+```
+
 JSON opcional:
 
 ```bash
@@ -269,7 +275,8 @@ Alcance de esta version:
 - valida shape minimo por fila
 - traduce a `signal.generated`
 - persiste en el JSONL store existente
-- reporta `records_read`, `accepted`, `deduplicated` y `rejected`
+- soporta `--dry-run`
+- reporta `rows_read`, `rows_valid`, `rows_invalid`, `events_written`, `duplicates`, `rejected_reasons` y `batch_trace_id`
 
 No hace todavia:
 

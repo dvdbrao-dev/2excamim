@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pandas as pd
 
+HANDOFF_SCHEMA_VERSION = "research-signals.v1"
+
 REQUIRED_COLUMNS = {
     "market_id",
     "timestamp",
@@ -38,6 +40,9 @@ def main() -> int:
         return 1
 
     dataframe = pd.read_parquet(input_path)
+    if dataframe.empty:
+        return 0
+
     missing_columns = sorted(REQUIRED_COLUMNS.difference(dataframe.columns))
     if missing_columns:
         print(
@@ -48,6 +53,7 @@ def main() -> int:
 
     for row_number, (_, row) in enumerate(dataframe.iterrows(), start=1):
         record = {column: normalize_value(value) for column, value in row.items()}
+        record["handoff_schema_version"] = HANDOFF_SCHEMA_VERSION
         record["row_number"] = row_number
         print(json.dumps(record, ensure_ascii=True, sort_keys=True))
 

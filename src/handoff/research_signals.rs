@@ -1,6 +1,9 @@
 use std::{
+    collections::BTreeMap,
+    fs,
     path::{Path, PathBuf},
     process::Command,
+    time::UNIX_EPOCH,
 };
 
 use chrono::{DateTime, Utc};
@@ -17,9 +20,16 @@ use super::HandoffError;
 const RESEARCH_TIMEFRAME: &str = "research_snapshot";
 const DECODER_SCRIPT_PATH: &str = "research_prediction_markets/export_signals_json.py";
 const RESEARCH_ACTOR: &str = "research_prediction_markets";
+pub const RESEARCH_SIGNAL_HANDOFF_SCHEMA_VERSION: &str = "research-signals.v1";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ResearchSignalIngestOptions {
+    pub dry_run: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResearchSignalInputRecord {
+    pub handoff_schema_version: Option<String>,
     pub row_number: usize,
     pub market_id: Option<String>,
     pub timestamp: Option<String>,
@@ -47,16 +57,29 @@ pub struct IngestedResearchSignal {
     pub signal_id: String,
     pub event_type: String,
     pub deduplicated: bool,
+    pub event_written: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResearchSignalRejectedReason {
+    pub reason: String,
+    pub count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResearchSignalIngestReport {
+    pub handoff_schema_version: String,
     pub input_path: PathBuf,
-    pub records_read: usize,
-    pub accepted: usize,
-    pub deduplicated: usize,
-    pub rejected: usize,
+    pub dry_run: bool,
+    pub batch_trace_id: String,
+    pub input_file_size_bytes: u64,
+    pub rows_read: usize,
+    pub rows_valid: usize,
+    pub rows_invalid: usize,
+    pub events_written: usize,
+    pub duplicates: usize,
     pub generated_event_types: Vec<String>,
+    pub rejected_reasons: Vec<ResearchSignalRejectedReason>,
     pub ingested_signals: Vec<IngestedResearchSignal>,
     pub rejections: Vec<ResearchSignalIngestRejection>,
 }
@@ -64,51 +87,76 @@ pub struct ResearchSignalIngestReport {
 pub fn ingest_research_signals_file(
     store: &JsonlEventStore,
     input_path: impl AsRef<Path>,
+    options: ResearchSignalIngestOptions,
 ) -> Result<ResearchSignalIngestReport, HandoffError> {
     let input_path = input_path.as_ref().to_path_buf();
     let records = decode_research_signal_records(&input_path)?;
+    let input_file_size_bytes = fs::metadata(&input_path)?.len();
+    let batch_trace_id = build_batch_trace_id(&input_path)?;
 
-    let mut accepted = 0usize;
-    let mut deduplicated = 0usize;
+    let mut rows_valid = 0usize;
+    let mut events_written = 0usize;
+    let mut duplicates = 0usize;
     let mut ingested_signals = Vec::new();
     let mut rejections = Vec::new();
+    let mut rejection_reason_counts = BTreeMap::new();
 
     for record in records.iter().cloned() {
-        match translate_record_to_signal_event(&input_path, &record) {
+        match translate_record_to_signal_event(&input_path, &batch_trace_id, &record) {
             Ok(envelope) => {
+                rows_valid += 1;
                 let signal_id = envelope.payload.signal_id.clone();
                 let stored = StoredEvent::try_from(envelope)?;
-                let appended = store.append_event(&stored)?;
-                if appended {
-                    accepted += 1;
+                let appended = if options.dry_run {
+                    false
                 } else {
-                    deduplicated += 1;
+                    store.append_event(&stored)?
+                };
+
+                if appended {
+                    events_written += 1;
+                } else if !options.dry_run {
+                    duplicates += 1;
                 }
 
                 ingested_signals.push(IngestedResearchSignal {
                     row_number: record.row_number,
                     signal_id,
                     event_type: stored.event_type.as_str().to_string(),
-                    deduplicated: !appended,
+                    deduplicated: !options.dry_run && !appended,
+                    event_written: appended,
                 });
             }
             Err(error) => {
+                let reason = error.to_string();
+                *rejection_reason_counts
+                    .entry(reason.clone())
+                    .or_insert(0usize) += 1;
                 rejections.push(ResearchSignalIngestRejection {
                     row_number: record.row_number,
                     market_id: record.market_id.clone(),
-                    reason: error.to_string(),
+                    reason,
                 });
             }
         }
     }
 
     Ok(ResearchSignalIngestReport {
+        handoff_schema_version: RESEARCH_SIGNAL_HANDOFF_SCHEMA_VERSION.to_string(),
         input_path,
-        records_read: records.len(),
-        accepted,
-        deduplicated,
-        rejected: rejections.len(),
+        dry_run: options.dry_run,
+        batch_trace_id,
+        input_file_size_bytes,
+        rows_read: records.len(),
+        rows_valid,
+        rows_invalid: rejections.len(),
+        events_written,
+        duplicates,
         generated_event_types: vec!["signal.generated".to_string()],
+        rejected_reasons: rejection_reason_counts
+            .into_iter()
+            .map(|(reason, count)| ResearchSignalRejectedReason { reason, count })
+            .collect(),
         ingested_signals,
         rejections,
     })
@@ -191,8 +239,10 @@ fn resolve_python_interpreter() -> Result<PathBuf, HandoffError> {
 
 fn translate_record_to_signal_event(
     input_path: &Path,
+    batch_trace_id: &str,
     record: &ResearchSignalInputRecord,
 ) -> Result<EventEnvelope<SignalGenerated>, HandoffError> {
+    validate_handoff_schema_version(record.handoff_schema_version.as_deref())?;
     let market_id = required_string(record.market_id.as_deref(), "market_id")?;
     let timestamp_raw = required_string(record.timestamp.as_deref(), "timestamp")?;
     let signal_name = required_string(record.signal_name.as_deref(), "signal_name")?;
@@ -211,7 +261,7 @@ fn translate_record_to_signal_event(
     let signal_id = build_signal_id(source, market_id, signal_name, &timestamp, direction);
     let aggregate_key = Some(build_instrument(source, market_id));
     let rationale = Some(build_rationale(signal_name, direction, record.probability));
-    let provenance_notes = build_provenance_notes(record)?;
+    let provenance_notes = build_provenance_notes(record, batch_trace_id)?;
 
     Ok(EventEnvelope::new_signal_generated(
         "runtime.handoff.research_signals",
@@ -232,9 +282,9 @@ fn translate_record_to_signal_event(
                 input_path.display(),
                 record.row_number
             )),
-            producer_run_id: None,
+            producer_run_id: Some(batch_trace_id.to_string()),
             actor: Some(RESEARCH_ACTOR.to_string()),
-            trace_id: Some(signal_id.clone()),
+            trace_id: Some(format!("{batch_trace_id}-row-{}", record.row_number)),
             notes: Some(provenance_notes),
         },
         SignalGenerated {
@@ -247,6 +297,18 @@ fn translate_record_to_signal_event(
             rationale,
         },
     )?)
+}
+
+fn validate_handoff_schema_version(value: Option<&str>) -> Result<(), HandoffError> {
+    match value {
+        Some(version) if version == RESEARCH_SIGNAL_HANDOFF_SCHEMA_VERSION => Ok(()),
+        Some(version) => Err(HandoffError::invalid_input(format!(
+            "handoff_schema_version must be {RESEARCH_SIGNAL_HANDOFF_SCHEMA_VERSION}; got {version}"
+        ))),
+        None => Err(HandoffError::invalid_input(
+            "missing handoff_schema_version",
+        )),
+    }
 }
 
 fn required_string<'a>(value: Option<&'a str>, field: &str) -> Result<&'a str, HandoffError> {
@@ -307,13 +369,19 @@ fn build_rationale(signal_name: &str, direction: &str, probability: Option<f64>)
     }
 }
 
-fn build_provenance_notes(record: &ResearchSignalInputRecord) -> Result<String, HandoffError> {
+fn build_provenance_notes(
+    record: &ResearchSignalInputRecord,
+    batch_trace_id: &str,
+) -> Result<String, HandoffError> {
     let metadata_value = match record.metadata.as_deref() {
         Some(raw) => serde_json::from_str::<serde_json::Value>(raw)?,
         None => serde_json::Value::Null,
     };
 
     Ok(serde_json::to_string(&json!({
+        "handoff_schema_version": record.handoff_schema_version,
+        "batch_trace_id": batch_trace_id,
+        "row_number": record.row_number,
         "market_id": record.market_id,
         "signal_name": record.signal_name,
         "direction": record.direction,
@@ -324,6 +392,28 @@ fn build_provenance_notes(record: &ResearchSignalInputRecord) -> Result<String, 
         "source": record.source,
         "metadata": metadata_value,
     }))?)
+}
+
+fn build_batch_trace_id(input_path: &Path) -> Result<String, HandoffError> {
+    let metadata = fs::metadata(input_path)?;
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+        .map(|value| value.as_secs())
+        .unwrap_or(0);
+    let file_name = input_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("input");
+
+    Ok(sanitize_id_component(&format!(
+        "research-batch-{}-{}-{}-{}",
+        RESEARCH_SIGNAL_HANDOFF_SCHEMA_VERSION,
+        file_name,
+        metadata.len(),
+        modified
+    )))
 }
 
 fn validate_probability(value: f64, field: &str) -> Result<(), HandoffError> {
@@ -373,7 +463,6 @@ fn sanitize_id_component(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_store_path(name: &str) -> PathBuf {
@@ -386,6 +475,7 @@ mod tests {
 
     fn valid_record() -> ResearchSignalInputRecord {
         ResearchSignalInputRecord {
+            handoff_schema_version: Some(RESEARCH_SIGNAL_HANDOFF_SCHEMA_VERSION.into()),
             row_number: 1,
             market_id: Some("market-1".into()),
             timestamp: Some("2026-04-03T17:57:41.047Z".into()),
@@ -403,9 +493,12 @@ mod tests {
 
     #[test]
     fn translates_valid_record_to_signal_generated() {
-        let envelope =
-            translate_record_to_signal_event(Path::new("signals.parquet"), &valid_record())
-                .unwrap();
+        let envelope = translate_record_to_signal_event(
+            Path::new("signals.parquet"),
+            "batch-1",
+            &valid_record(),
+        )
+        .unwrap();
 
         assert_eq!(envelope.payload.instrument, "polymarket:market-1");
         assert_eq!(envelope.payload.timeframe, RESEARCH_TIMEFRAME);
@@ -415,6 +508,10 @@ mod tests {
             envelope.linkage.correlation_id,
             Some(envelope.payload.signal_id.clone())
         );
+        assert_eq!(
+            envelope.provenance.producer_run_id.as_deref(),
+            Some("batch-1")
+        );
     }
 
     #[test]
@@ -423,7 +520,8 @@ mod tests {
         record.direction = Some("sideways".into());
 
         let error =
-            translate_record_to_signal_event(Path::new("signals.parquet"), &record).unwrap_err();
+            translate_record_to_signal_event(Path::new("signals.parquet"), "batch-1", &record)
+                .unwrap_err();
 
         assert!(error
             .to_string()
@@ -437,8 +535,9 @@ mod tests {
         let input_path = Path::new("signals.parquet");
         let record = valid_record();
 
-        let first_event = translate_record_to_signal_event(input_path, &record).unwrap();
-        let second_event = translate_record_to_signal_event(input_path, &record).unwrap();
+        let first_event = translate_record_to_signal_event(input_path, "batch-1", &record).unwrap();
+        let second_event =
+            translate_record_to_signal_event(input_path, "batch-1", &record).unwrap();
 
         let appended_first = store
             .append_event(&StoredEvent::try_from(first_event).unwrap())

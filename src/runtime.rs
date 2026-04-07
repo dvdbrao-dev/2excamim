@@ -5,7 +5,10 @@ use std::path::PathBuf;
 use serde_json::{json, Value};
 
 use crate::{
-    handoff::{ingest_research_signals_file, HandoffError, ResearchSignalIngestReport},
+    handoff::{
+        ingest_research_signals_file, HandoffError, ResearchSignalIngestOptions,
+        ResearchSignalIngestReport,
+    },
     observability::{summary_from_store, ObservabilityError},
     projections::{DecisionProjection, SignalProjection},
     queries::{
@@ -41,6 +44,7 @@ struct Config {
     command: Command,
     store_path: PathBuf,
     format: OutputFormat,
+    dry_run: bool,
 }
 
 #[derive(Debug)]
@@ -143,6 +147,7 @@ where
     let mut positionals = Vec::new();
     let mut store_path = PathBuf::from(DEFAULT_STORE_PATH);
     let mut format = OutputFormat::Text;
+    let mut dry_run = false;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -154,6 +159,9 @@ where
             }
             "--json" => {
                 format = OutputFormat::Json;
+            }
+            "--dry-run" => {
+                dry_run = true;
             }
             "-h" | "--help" => {
                 return Err(RuntimeError::Usage(usage()));
@@ -214,16 +222,23 @@ where
         command,
         store_path,
         format,
+        dry_run,
     })
 }
 
 fn usage() -> String {
     format!(
-        "Usage:\n  twoexcamim [summary] [--store PATH] [--json]\n  twoexcamim signal <signal-id> [--store PATH] [--json]\n  twoexcamim decision <decision-id> [--store PATH] [--json]\n  twoexcamim order <order-id> [--store PATH] [--json]\n  twoexcamim fill <fill-id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--json]\n\nDefault store path: {DEFAULT_STORE_PATH}"
+        "Usage:\n  twoexcamim [summary] [--store PATH] [--json]\n  twoexcamim signal <signal-id> [--store PATH] [--json]\n  twoexcamim decision <decision-id> [--store PATH] [--json]\n  twoexcamim order <order-id> [--store PATH] [--json]\n  twoexcamim fill <fill-id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nDefault store path: {DEFAULT_STORE_PATH}"
     )
 }
 
 fn execute(config: Config) -> Result<String, RuntimeError> {
+    if config.dry_run && !matches!(config.command, Command::IngestResearchSignals { .. }) {
+        return Err(RuntimeError::Usage(
+            "--dry-run is only supported for ingest research-signals".to_string(),
+        ));
+    }
+
     let store = JsonlEventStore::new(&config.store_path)?;
     let query_service = QueryService::new(&store);
 
@@ -246,32 +261,60 @@ fn render_research_signal_ingest(
     config: &Config,
     input_path: &PathBuf,
 ) -> Result<String, RuntimeError> {
-    let report = ingest_research_signals_file(store, input_path)?;
+    let report = ingest_research_signals_file(
+        store,
+        input_path,
+        ResearchSignalIngestOptions {
+            dry_run: config.dry_run,
+        },
+    )?;
 
     match config.format {
         OutputFormat::Text => {
             let mut lines = vec![
                 "Research Signal Ingest".to_string(),
                 format!("store_path: {}", config.store_path.display()),
+                format!("handoff_schema_version: {}", report.handoff_schema_version),
                 format!("input_path: {}", report.input_path.display()),
-                format!("records_read: {}", report.records_read),
-                format!("accepted: {}", report.accepted),
-                format!("deduplicated: {}", report.deduplicated),
-                format!("rejected: {}", report.rejected),
+                format!("dry_run: {}", report.dry_run),
+                format!("batch_trace_id: {}", report.batch_trace_id),
+                format!("input_file_size_bytes: {}", report.input_file_size_bytes),
+                format!("rows_read: {}", report.rows_read),
+                format!("rows_valid: {}", report.rows_valid),
+                format!("rows_invalid: {}", report.rows_invalid),
+                format!("events_written: {}", report.events_written),
+                format!("duplicates: {}", report.duplicates),
                 format!(
                     "generated_event_types: {}",
                     display_list(&report.generated_event_types)
                 ),
-                "ingested_signals:".to_string(),
+                "rejected_reasons:".to_string(),
             ];
+
+            if report.rejected_reasons.is_empty() {
+                lines.push("- none".to_string());
+            } else {
+                for rejected_reason in &report.rejected_reasons {
+                    lines.push(format!(
+                        "- count={} reason={}",
+                        rejected_reason.count, rejected_reason.reason
+                    ));
+                }
+            }
+
+            lines.extend(["ingested_signals:".to_string()]);
 
             if report.ingested_signals.is_empty() {
                 lines.push("- none".to_string());
             } else {
                 for signal in &report.ingested_signals {
                     lines.push(format!(
-                        "- row={} signal_id={} event_type={} deduplicated={}",
-                        signal.row_number, signal.signal_id, signal.event_type, signal.deduplicated
+                        "- row={} signal_id={} event_type={} event_written={} deduplicated={}",
+                        signal.row_number,
+                        signal.signal_id,
+                        signal.event_type,
+                        signal.event_written,
+                        signal.deduplicated
                     ));
                 }
             }
@@ -1216,12 +1259,18 @@ fn research_signal_ingest_json(report: &ResearchSignalIngestReport, store_path: 
     json!({
         "kind": "ingest_research_signals",
         "store_path": store_path.display().to_string(),
+        "handoff_schema_version": report.handoff_schema_version,
         "input_path": report.input_path.display().to_string(),
-        "records_read": report.records_read,
-        "accepted": report.accepted,
-        "deduplicated": report.deduplicated,
-        "rejected": report.rejected,
+        "dry_run": report.dry_run,
+        "batch_trace_id": report.batch_trace_id,
+        "input_file_size_bytes": report.input_file_size_bytes,
+        "rows_read": report.rows_read,
+        "rows_valid": report.rows_valid,
+        "rows_invalid": report.rows_invalid,
+        "events_written": report.events_written,
+        "duplicates": report.duplicates,
         "generated_event_types": report.generated_event_types,
+        "rejected_reasons": report.rejected_reasons,
         "ingested_signals": report.ingested_signals,
         "rejections": report.rejections,
     })

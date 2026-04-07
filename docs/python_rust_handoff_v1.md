@@ -8,6 +8,10 @@ Esta version no hace integracion live. Solo hace ingestión offline de un archiv
 
 ## Input aceptado
 
+Version de schema del handoff:
+
+- `research-signals.v1`
+
 Rust v1 acepta el Parquet local producido por:
 
 - `research_prediction_markets/main.py`
@@ -32,6 +36,7 @@ Columnas opcionales actualmente soportadas:
 
 Contrato esperado:
 
+- cada fila debe declarar `handoff_schema_version = research-signals.v1` una vez decodificada
 - `timestamp` en RFC3339 UTC una vez decodificado desde Parquet
 - `strength` en `[0,1]`
 - `direction` en uno de:
@@ -68,6 +73,8 @@ Conservacion de contexto research:
 - `signal_name` no se convierte en tipo de evento distinto; se conserva en `rationale`
 - `probability`, features y `metadata` se conservan serializados en `provenance.notes`
 - `source_ref` apunta al fichero de ingestión y al numero de fila
+- `producer_run_id` conserva el `batch_trace_id` del archivo ingerido
+- `trace_id` queda ligado a batch y fila para auditoria posterior
 
 ## CLI
 
@@ -77,12 +84,24 @@ Uso:
 cargo run -- ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl
 ```
 
+Dry run:
+
+```bash
+cargo run -- ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run
+```
+
 Salida:
 
-- `records_read`
-- `accepted`
-- `deduplicated`
-- `rejected`
+- `handoff_schema_version`
+- `input_path`
+- `rows_read`
+- `rows_valid`
+- `rows_invalid`
+- `events_written`
+- `duplicates`
+- `rejected_reasons`
+- `dry_run`
+- `batch_trace_id`
 - detalle de señales ingeridas
 - detalle de rechazos
 
@@ -100,6 +119,7 @@ Para evitar reescribir el laboratorio Python o introducir ingestion live, Rust u
 
 - script: `research_prediction_markets/export_signals_json.py`
 - responsabilidad: leer Parquet y emitir registros JSON linea a linea
+- el decoder añade `handoff_schema_version` por fila
 
 Rust conserva la validacion contractual, la traduccion a eventos y la persistencia en el store.
 
@@ -112,10 +132,11 @@ Rust conserva la validacion contractual, la traduccion a eventos y la persistenc
 - confirmacion automatica de señales
 - generacion de decisiones
 - ingestion de otras familias de artefactos research
+- ingestion live en memoria Python -> Rust
 
 ## Deuda abierta
 
 - sustituir el decoder Python por lectura nativa en Rust si compensa
-- formalizar versionado de schema del handoff research
 - decidir si `signal_name` merece entidad o taxonomia propia en capas futuras
 - decidir si un output posterior justifica `hypothesis.generated`
+- decidir si el `batch_trace_id` debe pasar a ser content-addressed

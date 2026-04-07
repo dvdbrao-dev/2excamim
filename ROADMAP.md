@@ -51,6 +51,7 @@ Incluye:
 - frontera explicita entre output research y eventos Rust
 - traduccion contractual a `signal.generated`
 - validacion minima por fila y reporte de aceptados, rechazados y deduplicados
+- `dry-run`, batch trace y report estructurado de ingestión
 
 Pendiente siguiente:
 
