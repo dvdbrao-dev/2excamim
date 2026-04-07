@@ -60,6 +60,18 @@ pub struct OrderPromotionReport {
     pub notes: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderSubmissionPolicyReport {
+    pub ref_id: String,
+    pub ref_type: GovernanceRefType,
+    pub status: PromotionPolicyStatus,
+    pub next_step: Option<PromotionNextStep>,
+    pub reasons: Vec<String>,
+    pub supporting_refs: Vec<GovernanceRef>,
+    pub blocking_refs: Vec<GovernanceRef>,
+    pub notes: Vec<String>,
+}
+
 pub fn signal_promotion_policy(
     events: &[StoredEvent],
     signal_id: &str,
@@ -462,6 +474,135 @@ pub fn order_promotion_policy(
     };
 
     Ok(Some(OrderPromotionReport {
+        ref_id: order_id.to_string(),
+        ref_type: GovernanceRefType::Order,
+        status,
+        next_step,
+        reasons,
+        supporting_refs,
+        blocking_refs,
+        notes,
+    }))
+}
+
+pub fn order_submission_policy(
+    events: &[StoredEvent],
+    order_id: &str,
+) -> Result<Option<OrderSubmissionPolicyReport>, QueryError> {
+    let Some(lifecycle) = order_lifecycle(events, order_id)? else {
+        return Ok(None);
+    };
+
+    let mut reasons = lifecycle
+        .reasons
+        .into_iter()
+        .map(|reason| format!("{reason:?}"))
+        .collect::<Vec<_>>();
+    let mut notes = lifecycle.notes;
+    let mut supporting_refs = vec![GovernanceRef {
+        ref_id: order_id.to_string(),
+        ref_type: GovernanceRefType::Order,
+    }];
+    let mut blocking_refs = Vec::new();
+
+    for decision_id in &lifecycle.decision_refs {
+        supporting_refs.push(GovernanceRef {
+            ref_id: decision_id.clone(),
+            ref_type: GovernanceRefType::Decision,
+        });
+    }
+    for fill_id in &lifecycle.observed_fill_ids {
+        supporting_refs.push(GovernanceRef {
+            ref_id: fill_id.clone(),
+            ref_type: GovernanceRefType::Fill,
+        });
+    }
+
+    if lifecycle.decision_refs.len() == 1 {
+        let decision_id = lifecycle
+            .decision_refs
+            .first()
+            .expect("single decision exists")
+            .clone();
+        if let Some(governance) = decision_governance(events, &decision_id)? {
+            reasons.push(format!("DecisionGovernance::{:?}", governance.status));
+            match governance.status {
+                GovernanceStatus::Inconsistent => {
+                    blocking_refs.push(GovernanceRef {
+                        ref_id: decision_id,
+                        ref_type: GovernanceRefType::Decision,
+                    });
+                    return Ok(Some(OrderSubmissionPolicyReport {
+                        ref_id: order_id.to_string(),
+                        ref_type: GovernanceRefType::Order,
+                        status: PromotionPolicyStatus::Inconsistent,
+                        next_step: None,
+                        reasons,
+                        supporting_refs,
+                        blocking_refs,
+                        notes,
+                    }));
+                }
+                GovernanceStatus::Blocked => {
+                    blocking_refs.push(GovernanceRef {
+                        ref_id: decision_id,
+                        ref_type: GovernanceRefType::Decision,
+                    });
+                    return Ok(Some(OrderSubmissionPolicyReport {
+                        ref_id: order_id.to_string(),
+                        ref_type: GovernanceRefType::Order,
+                        status: PromotionPolicyStatus::Blocked,
+                        next_step: None,
+                        reasons,
+                        supporting_refs,
+                        blocking_refs,
+                        notes,
+                    }));
+                }
+                GovernanceStatus::Weak | GovernanceStatus::Eligible => {}
+            }
+        }
+    }
+
+    let (status, next_step) = match lifecycle.status {
+        OrderLifecycleStatus::Registered => {
+            notes.push(
+                "order submission boundary v1 treats locally registered orders as ready to cross the paper execution boundary"
+                    .to_string(),
+            );
+            (
+                PromotionPolicyStatus::Eligible,
+                Some(PromotionNextStep::SubmitOrder),
+            )
+        }
+        OrderLifecycleStatus::Submitted => {
+            notes.push(
+                "order submission boundary is frozen because submission has already been recorded locally"
+                    .to_string(),
+            );
+            (
+                PromotionPolicyStatus::Frozen,
+                Some(PromotionNextStep::ObserveExecution),
+            )
+        }
+        OrderLifecycleStatus::ObservedWithFills => {
+            notes.push(
+                "order submission boundary is frozen because downstream execution has already been observed"
+                    .to_string(),
+            );
+            (
+                PromotionPolicyStatus::Frozen,
+                Some(PromotionNextStep::ReconcileObservedExecution),
+            )
+        }
+        OrderLifecycleStatus::Weak => (
+            PromotionPolicyStatus::Weak,
+            Some(PromotionNextStep::SubmitOrder),
+        ),
+        OrderLifecycleStatus::Inconsistent => (PromotionPolicyStatus::Inconsistent, None),
+    };
+
+    Ok(Some(OrderSubmissionPolicyReport {
         ref_id: order_id.to_string(),
         ref_type: GovernanceRefType::Order,
         status,

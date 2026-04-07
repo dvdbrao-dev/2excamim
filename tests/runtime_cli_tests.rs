@@ -244,6 +244,7 @@ fn cli_order_smoke_test() {
     assert!(stdout.contains("Order ord-1"));
     assert!(stdout.contains("Lifecycle"));
     assert!(stdout.contains("ObservedWithFills"));
+    assert!(stdout.contains("Submission Policy"));
     assert!(stdout.contains("Related Events"));
 
     cleanup(&path);
@@ -274,6 +275,7 @@ fn cli_help_returns_zero_and_shows_primary_verbs() {
     assert!(stdout.contains("policy <signal|decision|order>"));
     assert!(stdout.contains("materialize decisions"));
     assert!(stdout.contains("materialize orders"));
+    assert!(stdout.contains("submit orders"));
     assert!(stdout.contains("run batch --research-signals"));
 }
 

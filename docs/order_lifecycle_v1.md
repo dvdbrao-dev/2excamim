@@ -50,3 +50,8 @@ without introducing a gateway, orchestration runtime, or full order state machin
 
 `materialize orders` only creates `order.registered`. It intentionally does not emit
 `order.submitted` in v1.
+
+## Runtime submission note
+
+`submit orders` now materializes `order.submitted` from eligible local orders, but still does not
+imply broker acceptance, execution, amendment or cancellation semantics.

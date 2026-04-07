@@ -87,6 +87,24 @@ Pendiente siguiente:
 - decidir si el siguiente paso merece `order.submitted` manual o automática
 - mantener este slice sin gateway ni ejecución live
 
+## Order Submission Boundary v1
+
+Estado: implementado en version minima
+
+Incluye:
+
+- comando runtime `submit orders`
+- `submission policy` explícita sobre órdenes locales
+- `dry-run` y salida estructurada
+- persistencia prudente de `order.submitted`
+- preservación de `venue` local actual, incluida la convención `paper`
+
+Pendiente siguiente:
+
+- accepted/rejected
+- integración con gateway real
+- follow-up de ejecución sin introducir runtime live todavía
+
 ## Batch Runner v1
 
 Estado: implementado en version minima

@@ -11,17 +11,17 @@ use crate::{
         ResearchSignalIngestReport,
     },
     materialization::{
-        materialize_decisions, materialize_orders, DecisionMaterializationOptions,
+        materialize_decisions, materialize_orders, submit_orders, DecisionMaterializationOptions,
         DecisionMaterializationReport, MaterializationError, OrderMaterializationOptions,
-        OrderMaterializationReport,
+        OrderMaterializationReport, OrderSubmissionOptions, OrderSubmissionReport,
     },
     observability::{summary_from_store, ObservabilityError, ObservabilitySummary},
     projections::{DecisionProjection, SignalProjection},
     queries::{
         DecisionGovernanceReport, DecisionLineageReport, DecisionPromotionReport,
         DecisionReadiness, ExecutionBoundaryReport, FillReadiness, GovernanceRef,
-        GovernanceRefType, OrderLifecycleReport, OrderPromotionReport, PromotionNextStep,
-        PromotionPolicyStatus, QueryError, QueryService, SignalGovernanceReport,
+        GovernanceRefType, OrderLifecycleReport, OrderPromotionReport, OrderSubmissionPolicyReport,
+        PromotionNextStep, PromotionPolicyStatus, QueryError, QueryService, SignalGovernanceReport,
         SignalPromotionReport, SignalReadiness,
     },
     store::{JsonlEventStore, StoreError, StoredEvent},
@@ -48,6 +48,7 @@ enum Command {
     IngestResearchSignals { input_path: PathBuf },
     MaterializeDecisions,
     MaterializeOrders,
+    SubmitOrders,
     RunBatch { research_signals_path: PathBuf },
 }
 
@@ -273,6 +274,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError> {
         [materialize, entity] if materialize == "materialize" && entity == "orders" => {
             Command::MaterializeOrders
         }
+        [submit, entity] if submit == "submit" && entity == "orders" => Command::SubmitOrders,
         [run, batch, flag, path]
             if run == "run" && batch == "batch" && flag == "--research-signals" =>
         {
@@ -298,7 +300,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError> {
 
 fn usage() -> String {
     format!(
-        "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize orders [--store PATH] [--dry-run] [--json]\n  twoexcamim run batch --research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim materialize decisions --dry-run --json\n  twoexcamim materialize orders --dry-run --json\n  twoexcamim run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run\n\nDefault store path: {DEFAULT_STORE_PATH}"
+        "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize orders [--store PATH] [--dry-run] [--json]\n  twoexcamim submit orders [--store PATH] [--dry-run] [--json]\n  twoexcamim run batch --research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim materialize decisions --dry-run --json\n  twoexcamim materialize orders --dry-run --json\n  twoexcamim submit orders --dry-run --json\n  twoexcamim run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run\n\nDefault store path: {DEFAULT_STORE_PATH}"
     )
 }
 
@@ -309,11 +311,12 @@ fn execute(config: Config) -> Result<String, RuntimeError> {
             Command::IngestResearchSignals { .. }
                 | Command::MaterializeDecisions
                 | Command::MaterializeOrders
+                | Command::SubmitOrders
                 | Command::RunBatch { .. }
         )
     {
         return Err(RuntimeError::Usage(
-            "--dry-run is only supported for ingest research-signals, materialize decisions, materialize orders and run batch"
+            "--dry-run is only supported for ingest research-signals, materialize decisions, materialize orders, submit orders and run batch"
                 .to_string(),
         ));
     }
@@ -343,6 +346,7 @@ fn execute(config: Config) -> Result<String, RuntimeError> {
         }
         Command::MaterializeDecisions => render_materialize_decisions(&query_service, &config),
         Command::MaterializeOrders => render_materialize_orders(&query_service, &config),
+        Command::SubmitOrders => render_submit_orders(&query_service, &config),
         Command::RunBatch {
             ref research_signals_path,
         } => render_batch_run(&store, &config, research_signals_path),
@@ -510,6 +514,57 @@ fn render_materialize_orders(
             Ok(lines.join("\n"))
         }
         OutputFormat::Json => Ok(serde_json::to_string_pretty(&order_materialization_json(
+            &report,
+            &config.store_path,
+        ))?),
+    }
+}
+
+fn render_submit_orders(
+    query_service: &QueryService<'_>,
+    config: &Config,
+) -> Result<String, RuntimeError> {
+    let report = submit_orders(
+        query_service,
+        OrderSubmissionOptions {
+            dry_run: config.dry_run,
+        },
+    )?;
+
+    match config.format {
+        OutputFormat::Text => {
+            let mut lines = vec![
+                "Order Submission".to_string(),
+                format!("store_path: {}", config.store_path.display()),
+                format!("dry_run: {}", report.dry_run),
+                format!("batch_trace_id: {}", report.batch_trace_id),
+                format!("orders_inspected: {}", report.orders_inspected),
+                format!("eligible: {}", report.eligible),
+                format!("submitted: {}", report.submitted),
+                format!("skipped: {}", report.skipped),
+                format!("blocked: {}", report.blocked),
+                format!("inconsistent: {}", report.inconsistent),
+                format!("duplicates: {}", report.duplicates),
+                "items:".to_string(),
+            ];
+
+            if report.items.is_empty() {
+                lines.push("- none".to_string());
+            } else {
+                for item in &report.items {
+                    lines.push(format!(
+                        "- order_id={} disposition={:?} policy_status={} persisted={}",
+                        item.order_id, item.disposition, item.policy_status, item.persisted
+                    ));
+                    for reason in &item.reasons {
+                        lines.push(format!("  reason={reason}"));
+                    }
+                }
+            }
+
+            Ok(lines.join("\n"))
+        }
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(&order_submission_json(
             &report,
             &config.store_path,
         ))?),
@@ -866,10 +921,15 @@ fn render_order(
 ) -> Result<String, RuntimeError> {
     let lifecycle = query_service.order_lifecycle(order_id)?;
     let policy = query_service.order_promotion_policy(order_id)?;
+    let submission_policy = query_service.order_submission_policy(order_id)?;
     let all_events = query_service.all_events()?;
     let related_events = events_for_order(&all_events, order_id);
 
-    if lifecycle.is_none() && policy.is_none() && related_events.is_empty() {
+    if lifecycle.is_none()
+        && policy.is_none()
+        && submission_policy.is_none()
+        && related_events.is_empty()
+    {
         return Err(RuntimeError::NotFound {
             entity: "order",
             id: order_id.to_string(),
@@ -884,6 +944,9 @@ fn render_order(
             ];
             lines.extend(render_order_lifecycle_text(lifecycle.as_ref()));
             lines.extend(render_order_policy_text(policy.as_ref()));
+            lines.extend(render_order_submission_policy_text(
+                submission_policy.as_ref(),
+            ));
             lines.extend(render_timeline_text("Related Events", &related_events));
             Ok(lines.join("\n"))
         }
@@ -893,6 +956,7 @@ fn render_order(
             "order_id": order_id,
             "lifecycle": lifecycle.as_ref().map(order_lifecycle_json),
             "promotion_policy": policy.as_ref().map(order_promotion_json),
+            "submission_policy": submission_policy.as_ref().map(order_submission_policy_json),
             "related_events": event_timeline_json(&related_events),
         }))?),
     }
@@ -1100,6 +1164,24 @@ fn render_order_policy_text(report: Option<&OrderPromotionReport>) -> Vec<String
 
     render_policy_section(
         "Promotion Policy",
+        report.status,
+        report.next_step,
+        &report.reasons,
+        &report.supporting_refs,
+        &report.blocking_refs,
+        &report.notes,
+    )
+}
+
+fn render_order_submission_policy_text(
+    report: Option<&OrderSubmissionPolicyReport>,
+) -> Vec<String> {
+    let Some(report) = report else {
+        return vec!["Submission Policy: none".to_string()];
+    };
+
+    render_policy_section(
+        "Submission Policy",
         report.status,
         report.next_step,
         &report.reasons,
@@ -1508,6 +1590,19 @@ fn order_promotion_json(report: &OrderPromotionReport) -> Value {
     )
 }
 
+fn order_submission_policy_json(report: &OrderSubmissionPolicyReport) -> Value {
+    promotion_json(
+        &report.ref_id,
+        report.ref_type,
+        report.status,
+        report.next_step,
+        &report.reasons,
+        &report.supporting_refs,
+        &report.blocking_refs,
+        &report.notes,
+    )
+}
+
 fn promotion_json(
     ref_id: &str,
     ref_type: GovernanceRefType,
@@ -1677,6 +1772,23 @@ fn order_materialization_json(report: &OrderMaterializationReport, store_path: &
     })
 }
 
+fn order_submission_json(report: &OrderSubmissionReport, store_path: &PathBuf) -> Value {
+    json!({
+        "kind": "submit_orders",
+        "store_path": store_path.display().to_string(),
+        "dry_run": report.dry_run,
+        "batch_trace_id": report.batch_trace_id,
+        "orders_inspected": report.orders_inspected,
+        "eligible": report.eligible,
+        "submitted": report.submitted,
+        "skipped": report.skipped,
+        "blocked": report.blocked,
+        "inconsistent": report.inconsistent,
+        "duplicates": report.duplicates,
+        "items": report.items.iter().map(order_submission_item_json).collect::<Vec<_>>(),
+    })
+}
+
 fn summary_json(summary: &ObservabilitySummary, store_path: &PathBuf) -> Value {
     json!({
         "kind": "summary",
@@ -1721,6 +1833,17 @@ fn order_materialization_item_json(
         "policy_status": item.policy_status,
         "disposition": format!("{:?}", item.disposition),
         "candidate_order_id": item.candidate_order_id,
+        "persisted": item.persisted,
+        "reasons": item.reasons,
+        "notes": item.notes,
+    })
+}
+
+fn order_submission_item_json(item: &crate::materialization::OrderSubmissionItem) -> Value {
+    json!({
+        "order_id": item.order_id,
+        "policy_status": item.policy_status,
+        "disposition": format!("{:?}", item.disposition),
         "persisted": item.persisted,
         "reasons": item.reasons,
         "notes": item.notes,

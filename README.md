@@ -327,6 +327,7 @@ cargo run -- policy signal sig-1
 cargo run -- ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run
 cargo run -- materialize decisions --dry-run
 cargo run -- materialize orders --dry-run
+cargo run -- submit orders --dry-run
 cargo run -- run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run
 ```
 
@@ -397,6 +398,32 @@ El flow:
 Detalle:
 
 - [`docs/order_materialization_flow_v1.md`](/root/2excamim/docs/order_materialization_flow_v1.md)
+
+## Order Submission Boundary v1
+
+El runtime ya puede cruzar de `order.registered` a `order.submitted` de forma local y auditable:
+
+```bash
+cargo run -- submit orders --store ./var/events.jsonl --dry-run
+```
+
+Persistencia:
+
+```bash
+cargo run -- submit orders --store ./var/events.jsonl
+```
+
+El boundary:
+
+- evalúa órdenes locales visibles
+- usa una `submission policy` explícita separada de `decision_promotion_policy`
+- persiste `order.submitted` solo cuando procede
+- mantiene `venue = paper` si esa es la convención local actual
+- no implica aceptación de broker ni fill
+
+Detalle:
+
+- [`docs/order_submission_boundary_v1.md`](/root/2excamim/docs/order_submission_boundary_v1.md)
 
 ## Prediction Markets Research (Python Lab)
 

@@ -1,6 +1,7 @@
 use pretty_assertions::assert_eq;
 use twoexcamim::commands::{
     CommandError, ConfirmSignalCommand, FormDecisionCommand, GenerateSignalCommand,
+    RegisterOrderCommand, SubmitOrderCommand,
 };
 use twoexcamim::events::{DecisionAction, EventType, Provenance, SignalSide, SourceKind};
 
@@ -106,6 +107,54 @@ fn form_decision_produces_valid_decision_formed_event() {
 }
 
 #[test]
+fn register_order_produces_valid_order_registered_event() {
+    let event = RegisterOrderCommand {
+        produced_by: "order-engine".into(),
+        provenance: provenance(),
+        order_id: "ord-401".into(),
+        decision_id: Some("dec-401".into()),
+        hypothesis_id: Some("hyp-401".into()),
+        signal_id: Some("sig-401".into()),
+        instrument: "BTCUSDT".into(),
+        venue: "paper".into(),
+        parent_event_id: Some("evt-decision-401".into()),
+        correlation_id: Some("corr-401".into()),
+    }
+    .execute()
+    .unwrap();
+
+    assert_eq!(event.event_type, EventType::OrderRegistered);
+    assert_eq!(event.idempotency_key, "order.registered:v1:paper:ord-401");
+    assert_eq!(event.linkage.order_id.as_deref(), Some("ord-401"));
+    assert_eq!(event.linkage.decision_id.as_deref(), Some("dec-401"));
+    assert!(event.validate().is_ok());
+}
+
+#[test]
+fn submit_order_produces_valid_order_submitted_event() {
+    let event = SubmitOrderCommand {
+        produced_by: "submission-engine".into(),
+        provenance: provenance(),
+        order_id: "ord-402".into(),
+        decision_id: Some("dec-402".into()),
+        hypothesis_id: Some("hyp-402".into()),
+        signal_id: Some("sig-402".into()),
+        instrument: "BTCUSDT".into(),
+        venue: "paper".into(),
+        parent_event_id: Some("evt-order-402".into()),
+        correlation_id: Some("corr-402".into()),
+    }
+    .execute()
+    .unwrap();
+
+    assert_eq!(event.event_type, EventType::OrderSubmitted);
+    assert_eq!(event.idempotency_key, "order.submitted:v1:paper:ord-402");
+    assert_eq!(event.linkage.order_id.as_deref(), Some("ord-402"));
+    assert_eq!(event.linkage.decision_id.as_deref(), Some("dec-402"));
+    assert!(event.validate().is_ok());
+}
+
+#[test]
 fn generate_signal_returns_validation_error_for_invalid_input() {
     let error = GenerateSignalCommand {
         produced_by: "signal-engine".into(),
@@ -166,4 +215,24 @@ fn form_decision_returns_validation_error_for_invalid_input() {
     .unwrap_err();
 
     assert!(matches!(error, CommandError::Validation(message) if message.contains("size_hint")));
+}
+
+#[test]
+fn submit_order_returns_validation_error_for_invalid_input() {
+    let error = SubmitOrderCommand {
+        produced_by: "submission-engine".into(),
+        provenance: provenance(),
+        order_id: "ord-403".into(),
+        decision_id: Some("dec-403".into()),
+        hypothesis_id: None,
+        signal_id: None,
+        instrument: "BTCUSDT".into(),
+        venue: "".into(),
+        parent_event_id: None,
+        correlation_id: None,
+    }
+    .execute()
+    .unwrap_err();
+
+    assert!(matches!(error, CommandError::Validation(message) if message.contains("venue")));
 }

@@ -59,10 +59,14 @@ Provenance:
 
 ## Lo que no hace todavía
 
-- `order.submitted` automática
+- `order.submitted` automática desde este flow
 - accepted/rejected
 - gateway
 - resolver
 - runtime live
 - scheduler
 - orquestación permanente
+
+Siguiente seam:
+
+- `Order Submission Boundary v1` toma `order.registered` elegibles y materializa `order.submitted`

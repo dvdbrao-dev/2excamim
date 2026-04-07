@@ -8,10 +8,11 @@ use crate::{
 use super::{
     decision_execution_boundary, decision_governance, decision_lineage, decision_promotion_policy,
     decision_readiness, fill_execution_boundary, fill_readiness, order_lifecycle,
-    order_promotion_policy, signal_governance, signal_promotion_policy, signal_readiness,
-    DecisionGovernanceReport, DecisionLineageReport, DecisionPromotionReport, DecisionReadiness,
-    ExecutionBoundaryReport, FillReadiness, OrderLifecycleReport, OrderPromotionReport, QueryError,
-    SignalGovernanceReport, SignalPromotionReport, SignalReadiness,
+    order_promotion_policy, order_submission_policy, signal_governance, signal_promotion_policy,
+    signal_readiness, DecisionGovernanceReport, DecisionLineageReport, DecisionPromotionReport,
+    DecisionReadiness, ExecutionBoundaryReport, FillReadiness, OrderLifecycleReport,
+    OrderPromotionReport, OrderSubmissionPolicyReport, QueryError, SignalGovernanceReport,
+    SignalPromotionReport, SignalReadiness,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -195,6 +196,14 @@ impl<'a> QueryService<'a> {
     ) -> Result<Option<OrderPromotionReport>, QueryError> {
         let events = self.all_events()?;
         order_promotion_policy(&events, order_id)
+    }
+
+    pub fn order_submission_policy(
+        &self,
+        order_id: &str,
+    ) -> Result<Option<OrderSubmissionPolicyReport>, QueryError> {
+        let events = self.all_events()?;
+        order_submission_policy(&events, order_id)
     }
 
     fn signal_projections(&self) -> Result<Vec<SignalProjection>, QueryError> {

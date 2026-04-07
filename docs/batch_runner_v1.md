@@ -35,6 +35,7 @@ No reimplementa la semantica de negocio. Reutiliza las mismas capas y funciones 
 Nota:
 
 - en v1 el batch runner todavía se detiene antes de `materialize orders`
+- en v1 también se detiene antes de `submit orders`
 
 ## Report consolidado
 

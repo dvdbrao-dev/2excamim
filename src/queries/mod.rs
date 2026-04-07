@@ -25,9 +25,9 @@ pub use order_lifecycle::{
     order_lifecycle, OrderLifecycleReason, OrderLifecycleReport, OrderLifecycleStatus,
 };
 pub use promotion_policy::{
-    decision_promotion_policy, order_promotion_policy, signal_promotion_policy,
-    DecisionPromotionReport, OrderPromotionReport, PromotionNextStep, PromotionPolicyStatus,
-    SignalPromotionReport,
+    decision_promotion_policy, order_promotion_policy, order_submission_policy,
+    signal_promotion_policy, DecisionPromotionReport, OrderPromotionReport,
+    OrderSubmissionPolicyReport, PromotionNextStep, PromotionPolicyStatus, SignalPromotionReport,
 };
 pub use query_service::QueryService;
 pub use readiness::{
