@@ -2,6 +2,7 @@ mod decision_lineage;
 mod error;
 mod execution_boundary;
 mod governance;
+mod order_execution;
 mod order_lifecycle;
 mod promotion_policy;
 mod query_service;
@@ -21,6 +22,7 @@ pub use governance::{
     GovernanceRef, GovernanceRefType, GovernanceStatus, SignalGovernanceReason,
     SignalGovernanceReport,
 };
+pub use order_execution::{order_execution_summary, OrderExecutionStatus, OrderExecutionSummary};
 pub use order_lifecycle::{
     order_lifecycle, OrderLifecycleReason, OrderLifecycleReport, OrderLifecycleStatus,
 };

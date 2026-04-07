@@ -7,12 +7,12 @@ use crate::{
 
 use super::{
     decision_execution_boundary, decision_governance, decision_lineage, decision_promotion_policy,
-    decision_readiness, fill_execution_boundary, fill_readiness, order_lifecycle,
-    order_promotion_policy, order_submission_policy, signal_governance, signal_promotion_policy,
-    signal_readiness, DecisionGovernanceReport, DecisionLineageReport, DecisionPromotionReport,
-    DecisionReadiness, ExecutionBoundaryReport, FillReadiness, OrderLifecycleReport,
-    OrderPromotionReport, OrderSubmissionPolicyReport, QueryError, SignalGovernanceReport,
-    SignalPromotionReport, SignalReadiness,
+    decision_readiness, fill_execution_boundary, fill_readiness, order_execution_summary,
+    order_lifecycle, order_promotion_policy, order_submission_policy, signal_governance,
+    signal_promotion_policy, signal_readiness, DecisionGovernanceReport, DecisionLineageReport,
+    DecisionPromotionReport, DecisionReadiness, ExecutionBoundaryReport, FillReadiness,
+    OrderExecutionSummary, OrderLifecycleReport, OrderPromotionReport, OrderSubmissionPolicyReport,
+    QueryError, SignalGovernanceReport, SignalPromotionReport, SignalReadiness,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -188,6 +188,14 @@ impl<'a> QueryService<'a> {
     ) -> Result<Option<OrderLifecycleReport>, QueryError> {
         let events = self.all_events()?;
         order_lifecycle(&events, order_id)
+    }
+
+    pub fn order_execution_summary(
+        &self,
+        order_id: &str,
+    ) -> Result<Option<OrderExecutionSummary>, QueryError> {
+        let events = self.all_events()?;
+        order_execution_summary(&events, order_id)
     }
 
     pub fn order_promotion_policy(

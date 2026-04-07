@@ -174,6 +174,25 @@ Esto:
 - persiste `fill.received` solo sin `--dry-run`
 - hace visible la ejecución observada en `inspect order` a través de `OrderLifecycle`
 
+## Execution reconciliation v1
+
+`inspect order` ya expone tambien un `Execution Summary` derivado:
+
+```bash
+cargo run -- inspect order ord-1 --store ./var/events.jsonl --json
+```
+
+Ese summary calcula:
+
+- `ordered_quantity` desde `decision.size_hint` si existe
+- `filled_quantity`
+- `remaining_quantity`
+- `average_fill_price`
+- `fill_count`
+- `execution_status`
+
+Sin introducir eventos nuevos, broker semantics ni portfolio engine.
+
 ## Scenario Fixtures + Replay Harness v1
 
 El crate expone fixtures en Rust puro y un harness mínimo en `src/scenarios/` para ejecutar escenarios end-to-end sobre store + codecs + projections + queries:

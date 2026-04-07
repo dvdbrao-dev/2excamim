@@ -24,9 +24,9 @@ use crate::{
     queries::{
         DecisionGovernanceReport, DecisionLineageReport, DecisionPromotionReport,
         DecisionReadiness, ExecutionBoundaryReport, FillReadiness, GovernanceRef,
-        GovernanceRefType, OrderLifecycleReport, OrderPromotionReport, OrderSubmissionPolicyReport,
-        PromotionNextStep, PromotionPolicyStatus, QueryError, QueryService, SignalGovernanceReport,
-        SignalPromotionReport, SignalReadiness,
+        GovernanceRefType, OrderExecutionSummary, OrderLifecycleReport, OrderPromotionReport,
+        OrderSubmissionPolicyReport, PromotionNextStep, PromotionPolicyStatus, QueryError,
+        QueryService, SignalGovernanceReport, SignalPromotionReport, SignalReadiness,
     },
     store::{JsonlEventStore, StoreError, StoredEvent},
 };
@@ -1031,12 +1031,14 @@ fn render_order(
     order_id: &str,
 ) -> Result<String, RuntimeError> {
     let lifecycle = query_service.order_lifecycle(order_id)?;
+    let execution = query_service.order_execution_summary(order_id)?;
     let policy = query_service.order_promotion_policy(order_id)?;
     let submission_policy = query_service.order_submission_policy(order_id)?;
     let all_events = query_service.all_events()?;
     let related_events = events_for_order(&all_events, order_id);
 
     if lifecycle.is_none()
+        && execution.is_none()
         && policy.is_none()
         && submission_policy.is_none()
         && related_events.is_empty()
@@ -1054,6 +1056,7 @@ fn render_order(
                 format!("store_path: {}", config.store_path.display()),
             ];
             lines.extend(render_order_lifecycle_text(lifecycle.as_ref()));
+            lines.extend(render_order_execution_text(execution.as_ref()));
             lines.extend(render_order_policy_text(policy.as_ref()));
             lines.extend(render_order_submission_policy_text(
                 submission_policy.as_ref(),
@@ -1066,6 +1069,7 @@ fn render_order(
             "store_path": config.store_path.display().to_string(),
             "order_id": order_id,
             "lifecycle": lifecycle.as_ref().map(order_lifecycle_json),
+            "execution_summary": execution.as_ref().map(order_execution_json),
             "promotion_policy": policy.as_ref().map(order_promotion_json),
             "submission_policy": submission_policy.as_ref().map(order_submission_policy_json),
             "related_events": event_timeline_json(&related_events),
@@ -1387,6 +1391,55 @@ fn render_order_lifecycle_text(report: Option<&OrderLifecycleReport>) -> Vec<Str
     } else {
         for reason in &report.reasons {
             lines.push(format!("- {reason:?}"));
+        }
+    }
+
+    lines.push("notes:".to_string());
+    if report.notes.is_empty() {
+        lines.push("- none".to_string());
+    } else {
+        for note in &report.notes {
+            lines.push(format!("- {note}"));
+        }
+    }
+
+    lines
+}
+
+fn render_order_execution_text(report: Option<&OrderExecutionSummary>) -> Vec<String> {
+    let Some(report) = report else {
+        return vec!["Execution Summary: none".to_string()];
+    };
+
+    let mut lines = vec![
+        "Execution Summary".to_string(),
+        format!("status: {}", report.execution_status.as_str()),
+        format!(
+            "decision_id: {}",
+            display_option(report.decision_id.as_deref())
+        ),
+        format!(
+            "ordered_quantity: {}",
+            display_option_number(report.ordered_quantity)
+        ),
+        format!("filled_quantity: {}", report.filled_quantity),
+        format!(
+            "remaining_quantity: {}",
+            display_option_number(report.remaining_quantity)
+        ),
+        format!(
+            "average_fill_price: {}",
+            display_option_number(report.average_fill_price)
+        ),
+        format!("fill_count: {}", report.fill_count),
+        "reasons:".to_string(),
+    ];
+
+    if report.reasons.is_empty() {
+        lines.push("- none".to_string());
+    } else {
+        for reason in &report.reasons {
+            lines.push(format!("- {reason}"));
         }
     }
 
@@ -1787,6 +1840,21 @@ fn order_lifecycle_json(report: &OrderLifecycleReport) -> Value {
         "decision_refs": report.decision_refs,
         "observed_fill_ids": report.observed_fill_ids,
         "venue_refs": report.venue_refs,
+        "notes": report.notes,
+    })
+}
+
+fn order_execution_json(report: &OrderExecutionSummary) -> Value {
+    json!({
+        "order_id": report.order_id,
+        "decision_id": report.decision_id,
+        "ordered_quantity": report.ordered_quantity,
+        "filled_quantity": report.filled_quantity,
+        "remaining_quantity": report.remaining_quantity,
+        "average_fill_price": report.average_fill_price,
+        "fill_count": report.fill_count,
+        "execution_status": report.execution_status.as_str(),
+        "reasons": report.reasons,
         "notes": report.notes,
     })
 }

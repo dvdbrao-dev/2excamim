@@ -125,6 +125,22 @@ Pendiente siguiente:
 - integracion con gateway real
 - follow-up de ejecucion sin introducir runtime live todavia
 
+## Execution Reconciliation / Order Execution State v1
+
+Estado: implementado en version minima
+
+Incluye:
+
+- derivacion query-only de execution state por `order_id`
+- resumen minimo con `ordered_quantity`, `filled_quantity`, `remaining_quantity`, `average_fill_price` y `fill_count`
+- distincion entre `submitted_without_fills`, `partially_filled`, `fully_filled`, `overfilled`, `target_quantity_unknown` e `inconsistent`
+- integracion visible en `inspect order`
+
+Pendiente siguiente:
+
+- hacer contractual la cantidad objetivo de la `order`
+- reconciliacion mas rica sin introducir todavia broker semantics
+
 ## Batch Runner v1
 
 Estado: implementado en version minima

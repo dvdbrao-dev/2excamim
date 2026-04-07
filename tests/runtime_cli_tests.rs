@@ -252,9 +252,30 @@ fn cli_order_smoke_test() {
     assert!(output.status.success());
     assert!(stdout.contains("Order ord-1"));
     assert!(stdout.contains("Lifecycle"));
+    assert!(stdout.contains("Execution Summary"));
     assert!(stdout.contains("ObservedWithFills"));
+    assert!(stdout.contains("fully_filled"));
     assert!(stdout.contains("Submission Policy"));
     assert!(stdout.contains("Related Events"));
+
+    cleanup(&path);
+}
+
+#[test]
+fn cli_order_json_includes_execution_summary() {
+    let path = build_store("order-json");
+    let output = run_cli(&path, &["inspect", "order", "ord-1", "--json"]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: Value = serde_json::from_str(&stdout).unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(parsed["kind"], "order");
+    assert_eq!(
+        parsed["execution_summary"]["execution_status"],
+        "fully_filled"
+    );
+    assert_eq!(parsed["execution_summary"]["fill_count"], 1);
+    assert_eq!(parsed["execution_summary"]["filled_quantity"], 1.0);
 
     cleanup(&path);
 }

@@ -8,7 +8,8 @@ use twoexcamim::events::{
     SourceKind,
 };
 use twoexcamim::queries::{
-    ExecutionBoundaryStatus, OrderLifecycleReason, OrderLifecycleStatus, QueryService,
+    ExecutionBoundaryStatus, OrderExecutionStatus, OrderLifecycleReason, OrderLifecycleStatus,
+    QueryService,
 };
 use twoexcamim::store::{JsonlEventStore, StoredEvent};
 
@@ -178,6 +179,8 @@ fn make_fill_received(
     order_id: &str,
     decision_id: Option<&str>,
     venue: &str,
+    quantity: f64,
+    price: f64,
 ) -> StoredEvent {
     StoredEvent::try_from(
         EventEnvelope::new_fill_received(
@@ -191,8 +194,8 @@ fn make_fill_received(
                 order_id: order_id.into(),
                 instrument: "BTCUSDT".into(),
                 side: FillSide::Buy,
-                quantity: 1.0,
-                price: 100.0,
+                quantity,
+                price,
                 venue: venue.into(),
                 executed_at: Utc::now(),
             },
@@ -258,7 +261,7 @@ fn order_with_coherent_fill_is_observed_with_fills() {
             make_decision_formed("dec-1"),
             make_order_registered("ord-1", Some("dec-1"), "binance"),
             make_order_submitted("ord-1", Some("dec-1"), "binance"),
-            make_fill_received("fill-1", "ord-1", Some("dec-1"), "binance"),
+            make_fill_received("fill-1", "ord-1", Some("dec-1"), "binance", 1.0, 100.0),
         ],
     );
     let service = QueryService::new(&store);
@@ -284,6 +287,8 @@ fn order_with_fill_but_without_local_entity_is_weak() {
             "ord-1",
             Some("dec-1"),
             "binance",
+            1.0,
+            100.0,
         )],
     );
     let service = QueryService::new(&store);
@@ -345,7 +350,7 @@ fn order_query_relates_cleanly_to_decision_boundary() {
             make_signal_confirmed(),
             make_decision_formed("dec-1"),
             make_order_registered("ord-1", Some("dec-1"), "binance"),
-            make_fill_received("fill-1", "ord-1", Some("dec-1"), "binance"),
+            make_fill_received("fill-1", "ord-1", Some("dec-1"), "binance", 1.0, 100.0),
         ],
     );
     let service = QueryService::new(&store);
@@ -362,5 +367,158 @@ fn order_query_relates_cleanly_to_decision_boundary() {
         .notes
         .iter()
         .any(|note| note.contains("execution boundary")));
+    cleanup(&path);
+}
+
+#[test]
+fn execution_summary_reports_submitted_without_fills() {
+    let (store, path) = store_with_events(
+        "execution-submitted-without-fills",
+        vec![
+            make_signal_generated(),
+            make_signal_confirmed(),
+            make_decision_formed("dec-1"),
+            make_order_registered("ord-1", Some("dec-1"), "binance"),
+            make_order_submitted("ord-1", Some("dec-1"), "binance"),
+        ],
+    );
+    let service = QueryService::new(&store);
+
+    let summary = service.order_execution_summary("ord-1").unwrap().unwrap();
+
+    assert_eq!(
+        summary.execution_status,
+        OrderExecutionStatus::SubmittedWithoutFills
+    );
+    assert_eq!(summary.ordered_quantity, Some(1.0));
+    assert_eq!(summary.filled_quantity, 0.0);
+    assert_eq!(summary.remaining_quantity, Some(1.0));
+    assert_eq!(summary.fill_count, 0);
+    cleanup(&path);
+}
+
+#[test]
+fn execution_summary_reports_partial_fill() {
+    let (store, path) = store_with_events(
+        "execution-partial",
+        vec![
+            make_signal_generated(),
+            make_signal_confirmed(),
+            make_decision_formed("dec-1"),
+            make_order_registered("ord-1", Some("dec-1"), "binance"),
+            make_order_submitted("ord-1", Some("dec-1"), "binance"),
+            make_fill_received("fill-1", "ord-1", Some("dec-1"), "binance", 0.4, 100.0),
+        ],
+    );
+    let service = QueryService::new(&store);
+
+    let summary = service.order_execution_summary("ord-1").unwrap().unwrap();
+
+    assert_eq!(
+        summary.execution_status,
+        OrderExecutionStatus::PartiallyFilled
+    );
+    assert_eq!(summary.ordered_quantity, Some(1.0));
+    assert_eq!(summary.filled_quantity, 0.4);
+    assert_eq!(summary.remaining_quantity, Some(0.6));
+    assert_eq!(summary.average_fill_price, Some(100.0));
+    cleanup(&path);
+}
+
+#[test]
+fn execution_summary_reports_full_fill() {
+    let (store, path) = store_with_events(
+        "execution-full",
+        vec![
+            make_signal_generated(),
+            make_signal_confirmed(),
+            make_decision_formed("dec-1"),
+            make_order_registered("ord-1", Some("dec-1"), "binance"),
+            make_order_submitted("ord-1", Some("dec-1"), "binance"),
+            make_fill_received("fill-1", "ord-1", Some("dec-1"), "binance", 0.3, 100.0),
+            make_fill_received("fill-2", "ord-1", Some("dec-1"), "binance", 0.7, 110.0),
+        ],
+    );
+    let service = QueryService::new(&store);
+
+    let summary = service.order_execution_summary("ord-1").unwrap().unwrap();
+
+    assert_eq!(summary.execution_status, OrderExecutionStatus::FullyFilled);
+    assert_eq!(summary.ordered_quantity, Some(1.0));
+    assert_eq!(summary.filled_quantity, 1.0);
+    assert_eq!(summary.remaining_quantity, Some(0.0));
+    assert_eq!(summary.average_fill_price, Some(107.0));
+    assert_eq!(summary.fill_count, 2);
+    cleanup(&path);
+}
+
+#[test]
+fn execution_summary_reports_overfill() {
+    let (store, path) = store_with_events(
+        "execution-overfill",
+        vec![
+            make_signal_generated(),
+            make_signal_confirmed(),
+            make_decision_formed("dec-1"),
+            make_order_registered("ord-1", Some("dec-1"), "binance"),
+            make_order_submitted("ord-1", Some("dec-1"), "binance"),
+            make_fill_received("fill-1", "ord-1", Some("dec-1"), "binance", 1.2, 100.0),
+        ],
+    );
+    let service = QueryService::new(&store);
+
+    let summary = service.order_execution_summary("ord-1").unwrap().unwrap();
+
+    assert_eq!(summary.execution_status, OrderExecutionStatus::Overfilled);
+    assert_eq!(summary.remaining_quantity, Some(-0.2));
+    cleanup(&path);
+}
+
+#[test]
+fn execution_summary_reports_target_quantity_unknown_without_size_hint() {
+    let (store, path) = store_with_events(
+        "execution-target-unknown",
+        vec![
+            make_signal_generated(),
+            make_signal_confirmed(),
+            StoredEvent::try_from(
+                EventEnvelope::new_decision_formed(
+                    "decision-engine",
+                    Some("BTCUSDT".into()),
+                    Linkage {
+                        decision_id: Some("dec-1".into()),
+                        signal_id: Some("sig-1".into()),
+                        hypothesis_id: Some("hyp-1".into()),
+                        correlation_id: Some("corr-1".into()),
+                        ..Linkage::default()
+                    },
+                    runtime_provenance(),
+                    DecisionFormed {
+                        decision_id: "dec-1".into(),
+                        instrument: "BTCUSDT".into(),
+                        action: DecisionAction::Enter,
+                        side: Some(SignalSide::Long),
+                        size_hint: None,
+                        rationale: Some("no size hint".into()),
+                    },
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+            make_order_registered("ord-1", Some("dec-1"), "binance"),
+            make_order_submitted("ord-1", Some("dec-1"), "binance"),
+            make_fill_received("fill-1", "ord-1", Some("dec-1"), "binance", 0.5, 100.0),
+        ],
+    );
+    let service = QueryService::new(&store);
+
+    let summary = service.order_execution_summary("ord-1").unwrap().unwrap();
+
+    assert_eq!(
+        summary.execution_status,
+        OrderExecutionStatus::TargetQuantityUnknown
+    );
+    assert_eq!(summary.ordered_quantity, None);
+    assert_eq!(summary.remaining_quantity, None);
     cleanup(&path);
 }
