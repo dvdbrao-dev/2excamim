@@ -16,6 +16,12 @@ Evaluar el log actual y decidir que `signal` puede materializarse como `decision
 cargo run -- materialize decisions --store ./var/events.jsonl --dry-run
 ```
 
+Consulta de policy previa:
+
+```bash
+cargo run -- policy signal sig-1 --store ./var/events.jsonl
+```
+
 Persistencia:
 
 ```bash
@@ -27,6 +33,10 @@ JSON opcional:
 ```bash
 cargo run -- materialize decisions --store ./var/events.jsonl --dry-run --json
 ```
+
+Errores JSON:
+
+- si se usa `--json`, los errores de runtime salen estructurados por `stderr`
 
 ## Regla de decision en v1
 

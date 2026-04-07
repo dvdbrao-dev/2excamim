@@ -40,6 +40,9 @@ enum Command {
     Decision { decision_id: String },
     Order { order_id: String },
     Fill { fill_id: String },
+    PolicySignal { signal_id: String },
+    PolicyDecision { decision_id: String },
+    PolicyOrder { order_id: String },
     IngestResearchSignals { input_path: PathBuf },
     MaterializeDecisions,
 }
@@ -50,6 +53,11 @@ struct Config {
     store_path: PathBuf,
     format: OutputFormat,
     dry_run: bool,
+}
+
+enum ParseOutcome {
+    Config(Config),
+    Help,
 }
 
 #[derive(Debug)]
@@ -128,8 +136,16 @@ where
     I: IntoIterator<Item = T>,
     T: Into<String>,
 {
-    match parse_args(args) {
-        Ok(config) => match execute(config) {
+    let args = args.into_iter().map(Into::into).collect::<Vec<String>>();
+    match parse_args(args.clone()) {
+        Ok(ParseOutcome::Help) => {
+            if writeln!(stdout, "{}", usage()).is_err() {
+                let _ = writeln!(stderr, "failed to write runtime help");
+                return 1;
+            }
+            0
+        }
+        Ok(ParseOutcome::Config(config)) => match execute(config.clone()) {
             Ok(output) => {
                 if writeln!(stdout, "{output}").is_err() {
                     let _ = writeln!(stderr, "failed to write runtime output");
@@ -138,23 +154,19 @@ where
                 0
             }
             Err(error) => {
-                let _ = writeln!(stderr, "{error}");
-                1
+                write_runtime_error(stderr, Some(&config), &error);
+                exit_code_for_error(&error)
             }
         },
         Err(error) => {
-            let _ = writeln!(stderr, "{error}");
-            2
+            write_runtime_error_for_args(stderr, &args, &error);
+            exit_code_for_error(&error)
         }
     }
 }
 
-fn parse_args<I, T>(args: I) -> Result<Config, RuntimeError>
-where
-    I: IntoIterator<Item = T>,
-    T: Into<String>,
-{
-    let mut args = args.into_iter().map(Into::into);
+fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError> {
+    let mut args = args.into_iter();
     let _program_name = args.next();
 
     let mut positionals = Vec::new();
@@ -177,7 +189,7 @@ where
                 dry_run = true;
             }
             "-h" | "--help" => {
-                return Err(RuntimeError::Usage(usage()));
+                return Ok(ParseOutcome::Help);
             }
             _ if arg.starts_with('-') => {
                 return Err(RuntimeError::Usage(format!(
@@ -218,6 +230,17 @@ where
         [inspect, entity, id] if inspect == "inspect" && entity == "fill" => Command::Fill {
             fill_id: id.clone(),
         },
+        [policy, entity, id] if policy == "policy" && entity == "signal" => Command::PolicySignal {
+            signal_id: id.clone(),
+        },
+        [policy, entity, id] if policy == "policy" && entity == "decision" => {
+            Command::PolicyDecision {
+                decision_id: id.clone(),
+            }
+        }
+        [policy, entity, id] if policy == "policy" && entity == "order" => Command::PolicyOrder {
+            order_id: id.clone(),
+        },
         [ingest, kind, path] if ingest == "ingest" && kind == "research-signals" => {
             Command::IngestResearchSignals {
                 input_path: PathBuf::from(path),
@@ -234,17 +257,17 @@ where
         }
     };
 
-    Ok(Config {
+    Ok(ParseOutcome::Config(Config {
         command,
         store_path,
         format,
         dry_run,
-    })
+    }))
 }
 
 fn usage() -> String {
     format!(
-        "Usage:\n  twoexcamim [summary] [--store PATH] [--json]\n  twoexcamim signal <signal-id> [--store PATH] [--json]\n  twoexcamim decision <decision-id> [--store PATH] [--json]\n  twoexcamim order <order-id> [--store PATH] [--json]\n  twoexcamim fill <fill-id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n\nDefault store path: {DEFAULT_STORE_PATH}"
+        "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim materialize decisions --dry-run --json\n\nDefault store path: {DEFAULT_STORE_PATH}"
     )
 }
 
@@ -272,6 +295,15 @@ fn execute(config: Config) -> Result<String, RuntimeError> {
         }
         Command::Order { ref order_id } => render_order(&query_service, &config, order_id),
         Command::Fill { ref fill_id } => render_fill(&query_service, &config, fill_id),
+        Command::PolicySignal { ref signal_id } => {
+            render_signal_policy_only(&query_service, &config, signal_id)
+        }
+        Command::PolicyDecision { ref decision_id } => {
+            render_decision_policy_only(&query_service, &config, decision_id)
+        }
+        Command::PolicyOrder { ref order_id } => {
+            render_order_policy_only(&query_service, &config, order_id)
+        }
         Command::IngestResearchSignals { ref input_path } => {
             render_research_signal_ingest(&store, &config, input_path)
         }
@@ -330,6 +362,123 @@ fn render_materialize_decisions(
         OutputFormat::Json => Ok(serde_json::to_string_pretty(
             &decision_materialization_json(&report, &config.store_path),
         )?),
+    }
+}
+
+fn render_signal_policy_only(
+    query_service: &QueryService<'_>,
+    config: &Config,
+    signal_id: &str,
+) -> Result<String, RuntimeError> {
+    let policy = query_service.signal_promotion_policy(signal_id)?;
+    let Some(policy) = policy else {
+        return Err(RuntimeError::NotFound {
+            entity: "signal",
+            id: signal_id.to_string(),
+        });
+    };
+
+    match config.format {
+        OutputFormat::Text => {
+            let mut lines = vec![
+                format!("Signal Policy {}", signal_id),
+                format!("store_path: {}", config.store_path.display()),
+            ];
+            lines.extend(render_policy_section(
+                "Promotion Policy",
+                policy.status,
+                policy.next_step,
+                &policy.reasons,
+                &policy.supporting_refs,
+                &policy.blocking_refs,
+                &policy.notes,
+            ));
+            Ok(lines.join("\n"))
+        }
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(&json!({
+            "kind": "signal_policy",
+            "store_path": config.store_path.display().to_string(),
+            "signal_id": signal_id,
+            "promotion_policy": signal_promotion_json(&policy),
+        }))?),
+    }
+}
+
+fn render_decision_policy_only(
+    query_service: &QueryService<'_>,
+    config: &Config,
+    decision_id: &str,
+) -> Result<String, RuntimeError> {
+    let policy = query_service.decision_promotion_policy(decision_id)?;
+    let Some(policy) = policy else {
+        return Err(RuntimeError::NotFound {
+            entity: "decision",
+            id: decision_id.to_string(),
+        });
+    };
+
+    match config.format {
+        OutputFormat::Text => {
+            let mut lines = vec![
+                format!("Decision Policy {}", decision_id),
+                format!("store_path: {}", config.store_path.display()),
+            ];
+            lines.extend(render_policy_section(
+                "Promotion Policy",
+                policy.status,
+                policy.next_step,
+                &policy.reasons,
+                &policy.supporting_refs,
+                &policy.blocking_refs,
+                &policy.notes,
+            ));
+            Ok(lines.join("\n"))
+        }
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(&json!({
+            "kind": "decision_policy",
+            "store_path": config.store_path.display().to_string(),
+            "decision_id": decision_id,
+            "promotion_policy": decision_promotion_json(&policy),
+        }))?),
+    }
+}
+
+fn render_order_policy_only(
+    query_service: &QueryService<'_>,
+    config: &Config,
+    order_id: &str,
+) -> Result<String, RuntimeError> {
+    let policy = query_service.order_promotion_policy(order_id)?;
+    let Some(policy) = policy else {
+        return Err(RuntimeError::NotFound {
+            entity: "order",
+            id: order_id.to_string(),
+        });
+    };
+
+    match config.format {
+        OutputFormat::Text => {
+            let mut lines = vec![
+                format!("Order Policy {}", order_id),
+                format!("store_path: {}", config.store_path.display()),
+            ];
+            lines.extend(render_policy_section(
+                "Promotion Policy",
+                policy.status,
+                policy.next_step,
+                &policy.reasons,
+                &policy.supporting_refs,
+                &policy.blocking_refs,
+                &policy.notes,
+            ));
+            Ok(lines.join("\n"))
+        }
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(&json!({
+            "kind": "order_policy",
+            "store_path": config.store_path.display().to_string(),
+            "order_id": order_id,
+            "promotion_policy": order_promotion_json(&policy),
+        }))?),
     }
 }
 
@@ -1467,4 +1616,58 @@ where
     value
         .map(|value| format!("{value:?}"))
         .unwrap_or_else(|| "none".to_string())
+}
+
+fn exit_code_for_error(error: &RuntimeError) -> i32 {
+    match error {
+        RuntimeError::Usage(_) => 2,
+        RuntimeError::NotFound { .. } => 3,
+        RuntimeError::Store(_)
+        | RuntimeError::Query(_)
+        | RuntimeError::Handoff(_)
+        | RuntimeError::Materialization(_)
+        | RuntimeError::Observability(_)
+        | RuntimeError::Io(_)
+        | RuntimeError::Json(_) => 1,
+    }
+}
+
+fn write_runtime_error(stderr: &mut dyn Write, config: Option<&Config>, error: &RuntimeError) {
+    let use_json = config.is_some_and(|config| config.format == OutputFormat::Json);
+    if use_json {
+        let payload = json!({
+            "kind": "error",
+            "message": error.to_string(),
+            "exit_code": exit_code_for_error(error),
+        });
+        let _ = writeln!(
+            stderr,
+            "{}",
+            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| {
+                "{\"kind\":\"error\",\"message\":\"failed to encode runtime error\"}".to_string()
+            })
+        );
+    } else {
+        let _ = writeln!(stderr, "{error}");
+    }
+}
+
+fn write_runtime_error_for_args(stderr: &mut dyn Write, args: &[String], error: &RuntimeError) {
+    let use_json = args.iter().any(|arg| arg == "--json");
+    if use_json {
+        let payload = json!({
+            "kind": "error",
+            "message": error.to_string(),
+            "exit_code": exit_code_for_error(error),
+        });
+        let _ = writeln!(
+            stderr,
+            "{}",
+            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| {
+                "{\"kind\":\"error\",\"message\":\"failed to encode runtime error\"}".to_string()
+            })
+        );
+    } else {
+        let _ = writeln!(stderr, "{error}");
+    }
 }

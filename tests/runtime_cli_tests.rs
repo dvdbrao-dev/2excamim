@@ -199,6 +199,11 @@ fn run_cli(path: &Path, args: &[&str]) -> std::process::Output {
         .unwrap()
 }
 
+fn run_cli_raw(args: &[&str]) -> std::process::Output {
+    let binary = env!("CARGO_BIN_EXE_twoexcamim");
+    Command::new(binary).args(args).output().unwrap()
+}
+
 #[test]
 fn cli_summary_smoke_test() {
     let path = build_store("summary");
@@ -254,6 +259,82 @@ fn cli_fill_smoke_test() {
     assert!(stdout.contains("Fill fill-1"));
     assert!(stdout.contains("Execution Boundary"));
     assert!(stdout.contains("Matching Fill Events"));
+
+    cleanup(&path);
+}
+
+#[test]
+fn cli_help_returns_zero_and_shows_primary_verbs() {
+    let output = run_cli_raw(&["--help"]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    assert!(output.status.success());
+    assert!(stdout.contains("2EXCAMIM Runtime CLI"));
+    assert!(stdout.contains("inspect <signal|decision|order|fill>"));
+    assert!(stdout.contains("policy <signal|decision|order>"));
+    assert!(stdout.contains("materialize decisions"));
+}
+
+#[test]
+fn cli_invalid_command_returns_usage_exit_code() {
+    let output = run_cli_raw(&["nonsense"]);
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr.contains("invalid command"));
+}
+
+#[test]
+fn cli_policy_signal_json_smoke_test() {
+    let path = build_store("policy-signal");
+    let output = run_cli(&path, &["policy", "signal", "sig-1", "--json"]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: Value = serde_json::from_str(&stdout).unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(parsed["kind"], "signal_policy");
+    assert_eq!(parsed["signal_id"], "sig-1");
+    assert_eq!(parsed["promotion_policy"]["status"], "Eligible");
+
+    cleanup(&path);
+}
+
+#[test]
+fn cli_invalid_store_path_returns_runtime_error() {
+    let dir_path = std::env::temp_dir();
+    let output = run_cli_raw(&["summary", "--store", dir_path.to_str().unwrap()]);
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr.contains("store io error"));
+}
+
+#[test]
+fn cli_not_found_json_error_is_structured() {
+    let path = build_store("not-found-json");
+    let output = run_cli(&path, &["inspect", "signal", "missing", "--json"]);
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let parsed: Value = serde_json::from_str(&stderr).unwrap();
+
+    assert_eq!(output.status.code(), Some(3));
+    assert_eq!(parsed["kind"], "error");
+    assert_eq!(parsed["exit_code"], 3);
+    assert!(parsed["message"]
+        .as_str()
+        .unwrap()
+        .contains("signal missing not found"));
+
+    cleanup(&path);
+}
+
+#[test]
+fn cli_rejects_dry_run_for_inspect() {
+    let path = build_store("dry-run-invalid");
+    let output = run_cli(&path, &["inspect", "signal", "sig-1", "--dry-run"]);
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr.contains("--dry-run is only supported"));
 
     cleanup(&path);
 }

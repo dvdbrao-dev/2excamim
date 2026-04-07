@@ -315,6 +315,32 @@ El flow:
 Contrato:
 
 - [`docs/decision_materialization_flow_v1.md`](/root/2excamim/docs/decision_materialization_flow_v1.md)
+
+## Runtime Operations UX v1
+
+La CLI ya expone verbos operativos mas coherentes:
+
+```bash
+cargo run -- summary
+cargo run -- inspect signal sig-1
+cargo run -- policy signal sig-1
+cargo run -- ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run
+cargo run -- materialize decisions --dry-run
+```
+
+Notas operativas:
+
+- `--help` devuelve salida util y exit code `0`
+- `--json` produce salida estructurada y tambien errores JSON por `stderr`
+- exit codes:
+  - `0` exito
+  - `1` error runtime
+  - `2` uso invalido
+  - `3` entidad no encontrada
+
+Detalle:
+
+- [`docs/runtime_operations_ux_v1.md`](/root/2excamim/docs/runtime_operations_ux_v1.md)
 - permite reejecutar fixtures conocidas por nombre
 - no introduce bus, red, runtime, base de datos ni async
 
