@@ -189,6 +189,15 @@ fn build_store(name: &str) -> PathBuf {
     path
 }
 
+fn build_store_without_fill(name: &str) -> PathBuf {
+    let path = temp_store_path(name);
+    let store = JsonlEventStore::new(&path).unwrap();
+    let mut events = build_fixture_events();
+    events.pop();
+    store.append_events(&events).unwrap();
+    path
+}
+
 fn run_cli(path: &Path, args: &[&str]) -> std::process::Output {
     let binary = env!("CARGO_BIN_EXE_twoexcamim");
     Command::new(binary)
@@ -276,6 +285,7 @@ fn cli_help_returns_zero_and_shows_primary_verbs() {
     assert!(stdout.contains("materialize decisions"));
     assert!(stdout.contains("materialize orders"));
     assert!(stdout.contains("submit orders"));
+    assert!(stdout.contains("observe fill --fill-id"));
     assert!(stdout.contains("run batch --research-signals"));
 }
 
@@ -339,6 +349,73 @@ fn cli_rejects_dry_run_for_inspect() {
 
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr.contains("--dry-run is only supported"));
+
+    cleanup(&path);
+}
+
+#[test]
+fn cli_observe_fill_json_smoke_test() {
+    let path = build_store_without_fill("observe-fill-json");
+    let output = run_cli(
+        &path,
+        &[
+            "observe",
+            "fill",
+            "--fill-id",
+            "fill-cli-1",
+            "--order-id",
+            "ord-1",
+            "--side",
+            "buy",
+            "--quantity",
+            "1.25",
+            "--price",
+            "0.55",
+            "--executed-at",
+            "2026-04-07T00:00:00Z",
+            "--json",
+            "--dry-run",
+        ],
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: Value = serde_json::from_str(&stdout).unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(parsed["kind"], "observe_fill");
+    assert_eq!(parsed["order_id"], "ord-1");
+    assert_eq!(parsed["fill_id"], "fill-cli-1");
+    assert_eq!(parsed["dry_run"], true);
+    assert_eq!(parsed["disposition"], "Eligible");
+
+    cleanup(&path);
+}
+
+#[test]
+fn cli_observe_fill_rejects_invalid_timestamp() {
+    let path = build_store_without_fill("observe-fill-invalid-ts");
+    let output = run_cli(
+        &path,
+        &[
+            "observe",
+            "fill",
+            "--fill-id",
+            "fill-cli-2",
+            "--order-id",
+            "ord-1",
+            "--side",
+            "buy",
+            "--quantity",
+            "1.25",
+            "--price",
+            "0.55",
+            "--executed-at",
+            "not-a-timestamp",
+        ],
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr.contains("invalid RFC3339 timestamp"));
 
     cleanup(&path);
 }

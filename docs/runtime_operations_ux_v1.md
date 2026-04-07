@@ -13,6 +13,7 @@ Hacer la CLI del runtime mas coherente para operacion manual y futura automatiza
 - `materialize`
 - `materialize orders`
 - `submit orders`
+- `observe fill`
 - `run batch`
 
 Formas principales:
@@ -25,6 +26,7 @@ cargo run -- ingest research-signals ./signals.parquet --dry-run
 cargo run -- materialize decisions --dry-run
 cargo run -- materialize orders --dry-run
 cargo run -- submit orders --dry-run
+cargo run -- observe fill --fill-id fill-1 --order-id ord-1 --side buy --quantity 1 --price 0.54 --executed-at 2026-04-07T00:00:00Z --dry-run
 cargo run -- run batch --research-signals ./signals.parquet --dry-run
 ```
 
@@ -40,7 +42,7 @@ Siguen aceptandose por compatibilidad:
 ## Salida
 
 - texto estructurado por defecto
-- `--json` donde aplica a inspeccion, policy, ingest, materialization y batch run
+- `--json` donde aplica a inspeccion, policy, ingest, materialization, `observe fill` y batch run
 - errores en JSON por `stderr` si el comando se invoca con `--json`
 
 ## Exit codes
@@ -56,3 +58,4 @@ Siguen aceptandose por compatibilidad:
 - no hay scheduler ni live runner
 - no hay shell interactiva
 - el batch runner actual solo encadena ingest, materialize y summary
+- `observe fill` sigue siendo manual; no hay watch mode ni ingestion live

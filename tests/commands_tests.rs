@@ -1,9 +1,10 @@
+use chrono::Utc;
 use pretty_assertions::assert_eq;
 use twoexcamim::commands::{
     CommandError, ConfirmSignalCommand, FormDecisionCommand, GenerateSignalCommand,
-    RegisterOrderCommand, SubmitOrderCommand,
+    ObserveFillCommand, RegisterOrderCommand, SubmitOrderCommand,
 };
-use twoexcamim::events::{DecisionAction, EventType, Provenance, SignalSide, SourceKind};
+use twoexcamim::events::{DecisionAction, EventType, FillSide, Provenance, SignalSide, SourceKind};
 
 fn provenance() -> Provenance {
     Provenance {
@@ -155,6 +156,42 @@ fn submit_order_produces_valid_order_submitted_event() {
 }
 
 #[test]
+fn observe_fill_produces_valid_fill_received_event() {
+    let executed_at = Utc::now();
+    let event = ObserveFillCommand {
+        produced_by: "execution-observer".into(),
+        provenance: provenance(),
+        fill_id: "fill-501".into(),
+        decision_id: Some("dec-501".into()),
+        hypothesis_id: Some("hyp-501".into()),
+        signal_id: Some("sig-501".into()),
+        order_id: "ord-501".into(),
+        instrument: "BTCUSDT".into(),
+        side: FillSide::Buy,
+        quantity: 1.5,
+        price: 42000.0,
+        venue: "paper".into(),
+        executed_at,
+        parent_event_id: Some("evt-order-submitted-501".into()),
+        correlation_id: Some("corr-501".into()),
+    }
+    .execute()
+    .unwrap();
+
+    assert_eq!(event.event_type, EventType::FillReceived);
+    assert_eq!(
+        event.idempotency_key,
+        "fill.received:v1:paper:ord-501:fill-501"
+    );
+    assert_eq!(event.linkage.order_id.as_deref(), Some("ord-501"));
+    assert_eq!(event.linkage.decision_id.as_deref(), Some("dec-501"));
+    assert_eq!(event.payload.fill_id, "fill-501");
+    assert_eq!(event.payload.side, FillSide::Buy);
+    assert_eq!(event.payload.executed_at, executed_at);
+    assert!(event.validate().is_ok());
+}
+
+#[test]
 fn generate_signal_returns_validation_error_for_invalid_input() {
     let error = GenerateSignalCommand {
         produced_by: "signal-engine".into(),
@@ -235,4 +272,29 @@ fn submit_order_returns_validation_error_for_invalid_input() {
     .unwrap_err();
 
     assert!(matches!(error, CommandError::Validation(message) if message.contains("venue")));
+}
+
+#[test]
+fn observe_fill_returns_validation_error_for_invalid_input() {
+    let error = ObserveFillCommand {
+        produced_by: "execution-observer".into(),
+        provenance: provenance(),
+        fill_id: "fill-502".into(),
+        decision_id: Some("dec-502".into()),
+        hypothesis_id: None,
+        signal_id: None,
+        order_id: "ord-502".into(),
+        instrument: "BTCUSDT".into(),
+        side: FillSide::Sell,
+        quantity: 0.0,
+        price: 0.61,
+        venue: "paper".into(),
+        executed_at: Utc::now(),
+        parent_event_id: None,
+        correlation_id: None,
+    }
+    .execute()
+    .unwrap_err();
+
+    assert!(matches!(error, CommandError::Validation(message) if message.contains("quantity")));
 }

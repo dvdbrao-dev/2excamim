@@ -105,6 +105,26 @@ Pendiente siguiente:
 - integración con gateway real
 - follow-up de ejecución sin introducir runtime live todavía
 
+## Execution Observation / Fill Ingestion v1
+
+Estado: implementado en version minima
+
+Incluye:
+
+- comando runtime `observe fill`
+- validacion minima sobre la relacion con la `order` local
+- `dry-run` y salida estructurada
+- persistencia prudente de `fill.received`
+- deteccion de duplicados por idempotency key contractual
+- reflejo de ejecucion observada en `order_lifecycle`
+
+Pendiente siguiente:
+
+- reconciliacion avanzada
+- accepted/rejected
+- integracion con gateway real
+- follow-up de ejecucion sin introducir runtime live todavia
+
 ## Batch Runner v1
 
 Estado: implementado en version minima

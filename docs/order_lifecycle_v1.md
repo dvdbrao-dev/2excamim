@@ -55,3 +55,9 @@ without introducing a gateway, orchestration runtime, or full order state machin
 
 `submit orders` now materializes `order.submitted` from eligible local orders, but still does not
 imply broker acceptance, execution, amendment or cancellation semantics.
+
+## Runtime execution observation note
+
+`observe fill` now materializes `fill.received` from observed local execution evidence, but this
+still does not imply accepted/rejected semantics, reconciliation completeness or gateway
+integration.

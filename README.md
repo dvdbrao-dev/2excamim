@@ -11,6 +11,7 @@ cargo test
 cargo run -- summary --store ./var/events.jsonl
 cargo run -- signal sig-1 --store ./var/events.jsonl
 cargo run -- decision dec-1 --store ./var/events.jsonl --json
+cargo run -- observe fill --fill-id fill-1 --order-id ord-1 --side buy --quantity 1 --price 0.54 --executed-at 2026-04-07T00:00:00Z --store ./var/events.jsonl --dry-run
 ```
 
 Los eventos viven en `src/events/` y cada constructor `EventEnvelope::new_*`:
@@ -149,6 +150,29 @@ Mantiene alcance pequeño:
 - no añade índices persistentes
 - no añade caché
 - no introduce red, async ni integración runtime
+
+## Runtime execution observation v1
+
+El runtime ya puede observar ejecución local/paper mediante `fill.received`:
+
+```bash
+cargo run -- observe fill \
+  --fill-id fill-1 \
+  --order-id ord-1 \
+  --side buy \
+  --quantity 1 \
+  --price 0.54 \
+  --executed-at 2026-04-07T00:00:00Z \
+  --store ./var/events.jsonl \
+  --dry-run
+```
+
+Esto:
+
+- valida la relación con la `order` local
+- respeta idempotencia contractual
+- persiste `fill.received` solo sin `--dry-run`
+- hace visible la ejecución observada en `inspect order` a través de `OrderLifecycle`
 
 ## Scenario Fixtures + Replay Harness v1
 

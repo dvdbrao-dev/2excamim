@@ -2,18 +2,22 @@ use std::fmt::Debug;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 
 use crate::{
     batch_runner::{run_batch, BatchRunOptions, BatchRunReport, BatchRunnerError},
+    events::FillSide,
     handoff::{
         ingest_research_signals_file, HandoffError, ResearchSignalIngestOptions,
         ResearchSignalIngestReport,
     },
     materialization::{
-        materialize_decisions, materialize_orders, submit_orders, DecisionMaterializationOptions,
-        DecisionMaterializationReport, MaterializationError, OrderMaterializationOptions,
-        OrderMaterializationReport, OrderSubmissionOptions, OrderSubmissionReport,
+        materialize_decisions, materialize_orders, observe_fill, submit_orders,
+        DecisionMaterializationOptions, DecisionMaterializationReport, FillObservationOptions,
+        FillObservationReport, FillObservationRequest, MaterializationError,
+        OrderMaterializationOptions, OrderMaterializationReport, OrderSubmissionOptions,
+        OrderSubmissionReport,
     },
     observability::{summary_from_store, ObservabilityError, ObservabilitySummary},
     projections::{DecisionProjection, SignalProjection},
@@ -35,13 +39,14 @@ enum OutputFormat {
     Json,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 enum Command {
     Summary,
     Signal { signal_id: String },
     Decision { decision_id: String },
     Order { order_id: String },
     Fill { fill_id: String },
+    ObserveFill { request: FillObservationRequest },
     PolicySignal { signal_id: String },
     PolicyDecision { decision_id: String },
     PolicyOrder { order_id: String },
@@ -52,7 +57,7 @@ enum Command {
     RunBatch { research_signals_path: PathBuf },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 struct Config {
     command: Command,
     store_path: PathBuf,
@@ -186,6 +191,15 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError> {
     let mut store_path = PathBuf::from(DEFAULT_STORE_PATH);
     let mut format = OutputFormat::Text;
     let mut dry_run = false;
+    let mut fill_id = None;
+    let mut order_id = None;
+    let mut decision_id = None;
+    let mut instrument = None;
+    let mut side = None;
+    let mut quantity = None;
+    let mut price = None;
+    let mut venue = None;
+    let mut executed_at = None;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -210,6 +224,15 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError> {
                 })?;
                 positionals.push(path);
             }
+            "--fill-id" => fill_id = Some(required_flag_value(&mut args, "--fill-id")?),
+            "--order-id" => order_id = Some(required_flag_value(&mut args, "--order-id")?),
+            "--decision-id" => decision_id = Some(required_flag_value(&mut args, "--decision-id")?),
+            "--instrument" => instrument = Some(required_flag_value(&mut args, "--instrument")?),
+            "--side" => side = Some(required_flag_value(&mut args, "--side")?),
+            "--quantity" => quantity = Some(required_flag_value(&mut args, "--quantity")?),
+            "--price" => price = Some(required_flag_value(&mut args, "--price")?),
+            "--venue" => venue = Some(required_flag_value(&mut args, "--venue")?),
+            "--executed-at" => executed_at = Some(required_flag_value(&mut args, "--executed-at")?),
             "-h" | "--help" => {
                 return Ok(ParseOutcome::Help);
             }
@@ -237,6 +260,22 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError> {
         },
         [single, id] if single == "fill" => Command::Fill {
             fill_id: id.clone(),
+        },
+        [observe, entity] if observe == "observe" && entity == "fill" => Command::ObserveFill {
+            request: FillObservationRequest {
+                fill_id: required_value(fill_id, "--fill-id")?,
+                order_id: required_value(order_id, "--order-id")?,
+                decision_id,
+                instrument,
+                side: parse_fill_side(&required_value(side, "--side")?)?,
+                quantity: parse_f64_flag(&required_value(quantity, "--quantity")?, "--quantity")?,
+                price: parse_f64_flag(&required_value(price, "--price")?, "--price")?,
+                venue,
+                executed_at: parse_timestamp_flag(
+                    &required_value(executed_at, "--executed-at")?,
+                    "--executed-at",
+                )?,
+            },
         },
         [inspect, entity, id] if inspect == "inspect" && entity == "signal" => Command::Signal {
             signal_id: id.clone(),
@@ -300,7 +339,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError> {
 
 fn usage() -> String {
     format!(
-        "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize orders [--store PATH] [--dry-run] [--json]\n  twoexcamim submit orders [--store PATH] [--dry-run] [--json]\n  twoexcamim run batch --research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim materialize decisions --dry-run --json\n  twoexcamim materialize orders --dry-run --json\n  twoexcamim submit orders --dry-run --json\n  twoexcamim run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run\n\nDefault store path: {DEFAULT_STORE_PATH}"
+        "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize orders [--store PATH] [--dry-run] [--json]\n  twoexcamim submit orders [--store PATH] [--dry-run] [--json]\n  twoexcamim observe fill --fill-id ID --order-id ID --side <buy|sell> --quantity N --price N --executed-at RFC3339 [--decision-id ID] [--instrument VALUE] [--venue VALUE] [--store PATH] [--dry-run] [--json]\n  twoexcamim run batch --research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim materialize decisions --dry-run --json\n  twoexcamim materialize orders --dry-run --json\n  twoexcamim submit orders --dry-run --json\n  twoexcamim observe fill --fill-id fill-1 --order-id ord-1 --side buy --quantity 1 --price 0.54 --executed-at 2026-04-07T00:00:00Z --dry-run\n  twoexcamim run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run\n\nDefault store path: {DEFAULT_STORE_PATH}"
     )
 }
 
@@ -312,11 +351,12 @@ fn execute(config: Config) -> Result<String, RuntimeError> {
                 | Command::MaterializeDecisions
                 | Command::MaterializeOrders
                 | Command::SubmitOrders
+                | Command::ObserveFill { .. }
                 | Command::RunBatch { .. }
         )
     {
         return Err(RuntimeError::Usage(
-            "--dry-run is only supported for ingest research-signals, materialize decisions, materialize orders, submit orders and run batch"
+            "--dry-run is only supported for ingest research-signals, materialize decisions, materialize orders, submit orders, observe fill and run batch"
                 .to_string(),
         ));
     }
@@ -332,6 +372,9 @@ fn execute(config: Config) -> Result<String, RuntimeError> {
         }
         Command::Order { ref order_id } => render_order(&query_service, &config, order_id),
         Command::Fill { ref fill_id } => render_fill(&query_service, &config, fill_id),
+        Command::ObserveFill { ref request } => {
+            render_observe_fill(&query_service, &config, request)
+        }
         Command::PolicySignal { ref signal_id } => {
             render_signal_policy_only(&query_service, &config, signal_id)
         }
@@ -565,6 +608,74 @@ fn render_submit_orders(
             Ok(lines.join("\n"))
         }
         OutputFormat::Json => Ok(serde_json::to_string_pretty(&order_submission_json(
+            &report,
+            &config.store_path,
+        ))?),
+    }
+}
+
+fn render_observe_fill(
+    query_service: &QueryService<'_>,
+    config: &Config,
+    request: &FillObservationRequest,
+) -> Result<String, RuntimeError> {
+    let report = observe_fill(
+        query_service,
+        request,
+        FillObservationOptions {
+            dry_run: config.dry_run,
+        },
+    )?;
+
+    match config.format {
+        OutputFormat::Text => Ok([
+            "Execution Observation".to_string(),
+            format!("store_path: {}", config.store_path.display()),
+            format!("dry_run: {}", report.dry_run),
+            format!("batch_trace_id: {}", report.batch_trace_id),
+            format!("fill_id: {}", report.fill_id),
+            format!("order_id: {}", report.order_id),
+            format!(
+                "order_status_before: {}",
+                display_option(report.order_status_before.as_deref())
+            ),
+            format!(
+                "resolved_decision_id: {}",
+                display_option(report.resolved_decision_id.as_deref())
+            ),
+            format!("resolved_instrument: {}", report.resolved_instrument),
+            format!("resolved_venue: {}", report.resolved_venue),
+            format!("disposition: {:?}", report.disposition),
+            format!("persisted: {}", report.persisted),
+            format!("duplicate: {}", report.duplicate),
+            "reasons:".to_string(),
+        ]
+        .into_iter()
+        .chain(if report.reasons.is_empty() {
+            vec!["- none".to_string()]
+        } else {
+            report
+                .reasons
+                .iter()
+                .map(|reason| format!("- {reason}"))
+                .collect()
+        })
+        .chain(
+            ["notes:".to_string()]
+                .into_iter()
+                .chain(if report.notes.is_empty() {
+                    vec!["- none".to_string()]
+                } else {
+                    report
+                        .notes
+                        .iter()
+                        .map(|note| format!("- {note}"))
+                        .collect()
+                }),
+        )
+        .collect::<Vec<_>>()
+        .join("\n")),
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(&fill_observation_json(
             &report,
             &config.store_path,
         ))?),
@@ -1789,6 +1900,26 @@ fn order_submission_json(report: &OrderSubmissionReport, store_path: &PathBuf) -
     })
 }
 
+fn fill_observation_json(report: &FillObservationReport, store_path: &PathBuf) -> Value {
+    json!({
+        "kind": "observe_fill",
+        "store_path": store_path.display().to_string(),
+        "dry_run": report.dry_run,
+        "batch_trace_id": report.batch_trace_id,
+        "fill_id": report.fill_id,
+        "order_id": report.order_id,
+        "order_status_before": report.order_status_before,
+        "resolved_decision_id": report.resolved_decision_id,
+        "resolved_instrument": report.resolved_instrument,
+        "resolved_venue": report.resolved_venue,
+        "disposition": format!("{:?}", report.disposition),
+        "persisted": report.persisted,
+        "duplicate": report.duplicate,
+        "reasons": report.reasons,
+        "notes": report.notes,
+    })
+}
+
 fn summary_json(summary: &ObservabilitySummary, store_path: &PathBuf) -> Value {
     json!({
         "kind": "summary",
@@ -2013,5 +2144,48 @@ fn write_runtime_error_for_args(stderr: &mut dyn Write, args: &[String], error: 
         );
     } else {
         let _ = writeln!(stderr, "{error}");
+    }
+}
+
+fn required_flag_value(
+    args: &mut std::vec::IntoIter<String>,
+    flag: &str,
+) -> Result<String, RuntimeError> {
+    args.next()
+        .ok_or_else(|| RuntimeError::Usage(format!("missing value for {flag}\n\n{}", usage())))
+}
+
+fn required_value(value: Option<String>, flag: &str) -> Result<String, RuntimeError> {
+    value.ok_or_else(|| RuntimeError::Usage(format!("missing value for {flag}\n\n{}", usage())))
+}
+
+fn parse_f64_flag(value: &str, flag: &str) -> Result<f64, RuntimeError> {
+    value.parse::<f64>().map_err(|_| {
+        RuntimeError::Usage(format!(
+            "invalid numeric value for {flag}: {value}\n\n{}",
+            usage()
+        ))
+    })
+}
+
+fn parse_timestamp_flag(value: &str, flag: &str) -> Result<DateTime<Utc>, RuntimeError> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|value| value.with_timezone(&Utc))
+        .map_err(|_| {
+            RuntimeError::Usage(format!(
+                "invalid RFC3339 timestamp for {flag}: {value}\n\n{}",
+                usage()
+            ))
+        })
+}
+
+fn parse_fill_side(value: &str) -> Result<FillSide, RuntimeError> {
+    match value.to_ascii_lowercase().as_str() {
+        "buy" => Ok(FillSide::Buy),
+        "sell" => Ok(FillSide::Sell),
+        _ => Err(RuntimeError::Usage(format!(
+            "invalid fill side: {value}\n\n{}",
+            usage()
+        ))),
     }
 }
