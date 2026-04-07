@@ -8,6 +8,9 @@ Crate Rust mínimo para el sistema de eventos v1 de 2EXCAMIM.
 cargo fmt
 cargo check
 cargo test
+cargo run -- summary --store ./var/events.jsonl
+cargo run -- signal sig-1 --store ./var/events.jsonl
+cargo run -- decision dec-1 --store ./var/events.jsonl --json
 ```
 
 Los eventos viven en `src/events/` y cada constructor `EventEnvelope::new_*`:
@@ -214,10 +217,37 @@ let summary = app.current_summary()?;
 println!("{summary:?}");
 ```
 
-La capa application mantiene alcance pequeño:
+La capa application mantiene alcance pequeno:
 
 - persiste `StoredEvent` o `EventEnvelope<T>` sobre el JSONL store existente
 - expone projections y summary sin duplicar lógica
+
+## Runtime Skeleton v1
+
+El crate ya expone un runtime ejecutable minimo para inspeccion y evaluacion del estado actual del sistema:
+
+```bash
+cargo run -- [summary] --store ./var/events.jsonl
+cargo run -- signal sig-1 --store ./var/events.jsonl
+cargo run -- decision dec-1 --store ./var/events.jsonl
+cargo run -- order ord-1 --store ./var/events.jsonl
+cargo run -- fill fill-1 --store ./var/events.jsonl
+cargo run -- signal sig-1 --store ./var/events.jsonl --json
+```
+
+Caracteristicas del runtime skeleton:
+
+- binario CLI real con entrypoint en `src/main.rs`
+- reutiliza `JsonlEventStore`, `QueryService` y capas semanticas existentes
+- inspecciona `signal`, `decision`, `order` y `fill`
+- expone readiness, governance, promotion policy, lineage y execution boundary segun aplique
+- usa solo el log/store JSONL actual
+- no introduce red, scheduler, resolver, gateway ni ejecucion live
+
+Pendiente mayor despues de este slice:
+
+- traduccion del output Python de research a eventos Rust del sistema
+- integracion Python -> Rust sobre una interfaz estructurada y estable
 - permite reejecutar fixtures conocidas por nombre
 - no introduce bus, red, runtime, base de datos ni async
 

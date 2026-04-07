@@ -23,3 +23,20 @@ Pendiente:
 - validación estadística
 - integración con runtime Rust
 - traducción de output Python a eventos del sistema
+
+## Runtime Skeleton v1
+
+Estado: implementado en versión mínima
+
+Incluye:
+
+- binario CLI en Rust para inspección del log JSONL
+- entrypoint ejecutable claro para evaluación del sistema actual
+- inspección de `signal`, `decision`, `order` y `fill`
+- consulta de governance, policy y boundaries reutilizando `QueryService`
+- salida estructurada en texto con JSON opcional
+
+Pendiente siguiente:
+
+- traducción del output Python de research a eventos del sistema Rust
+- integración Python -> Rust sin introducir runtime live ni scheduler real todavía

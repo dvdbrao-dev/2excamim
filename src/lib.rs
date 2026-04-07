@@ -5,6 +5,7 @@ pub mod events;
 pub mod observability;
 pub mod projections;
 pub mod queries;
+pub mod runtime;
 pub mod scenarios;
 pub mod store;
 

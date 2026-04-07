@@ -35,4 +35,23 @@ Encaje doctrinal:
 Interfaz actual con el sistema:
 
 - salida en Parquet
-- preparado para futura traducción a eventos Rust
+- preparado para futura traduccion a eventos Rust
+
+## Runtime Rust actual
+
+El runtime operativo ya tiene un esqueleto ejecutable minimo:
+
+- CLI de inspeccion sobre el store JSONL append-only
+- consultas sobre `signal`, `decision`, `order` y `fill`
+- reutilizacion directa de projections, observability y query layer
+
+No incluye todavia:
+
+- integracion automatica Python -> Rust
+- resolver
+- scheduler real
+- ejecucion live
+
+Siguiente integracion mayor:
+
+- traducir el output estructurado del research Python a eventos Rust consumibles por el runtime
