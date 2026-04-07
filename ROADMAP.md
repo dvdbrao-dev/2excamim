@@ -58,3 +58,14 @@ Pendiente siguiente:
 - ampliar el handoff sin salir de modo offline
 - decidir si el decoder Parquet pasa a Rust nativo
 - evaluar cuando el output research justifica `hypothesis.generated`
+
+## Decision Materialization Flow v1
+
+Estado: implementado en version minima
+
+Incluye:
+
+- comando runtime `materialize decisions`
+- evaluacion explicable sobre readiness, governance y promotion policy
+- `dry-run` y salida estructurada
+- persistencia prudente de `decision.formed` para casos claramente elegibles

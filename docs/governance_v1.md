@@ -58,3 +58,13 @@ execution-boundary and order-lifecycle semantics.
 - No governance result is persisted as an event.
 - No promotion write-time enforcement is introduced.
 - No freeze persistence, deprecation model, or component scorecards are introduced.
+
+## Runtime use in v1
+
+`decision_materialization_flow_v1` consumes governance indirectly through `signal_promotion_policy`.
+
+In current runtime slices:
+
+- governance remains query-only
+- runtime decisions are materialized only when the composed policy still resolves to `Eligible` with `FormDecision`
+- blocked and inconsistent signals stay non-materialized and fully explainable from query output

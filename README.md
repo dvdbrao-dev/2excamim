@@ -290,6 +290,31 @@ Contrato y decisiones:
 
 - [`docs/python_rust_handoff_v1.md`](/root/2excamim/docs/python_rust_handoff_v1.md)
 - [`docs/ADR-008-python-rust-handoff-v1.md`](/root/2excamim/docs/ADR-008-python-rust-handoff-v1.md)
+
+## Decision Materialization Flow v1
+
+El runtime ya puede evaluar señales del log y decidir si pueden materializarse como `decision.formed`:
+
+```bash
+cargo run -- materialize decisions --store ./var/events.jsonl --dry-run
+```
+
+Persistencia prudente:
+
+```bash
+cargo run -- materialize decisions --store ./var/events.jsonl
+```
+
+El flow:
+
+- inspecciona las señales visibles en projections
+- reutiliza readiness, governance y signal promotion policy
+- marca cada señal como `Eligible`, `Skipped`, `Blocked` o `Inconsistent`
+- persiste `decision.formed` solo para casos claramente elegibles cuando no se usa `--dry-run`
+
+Contrato:
+
+- [`docs/decision_materialization_flow_v1.md`](/root/2excamim/docs/decision_materialization_flow_v1.md)
 - permite reejecutar fixtures conocidas por nombre
 - no introduce bus, red, runtime, base de datos ni async
 

@@ -9,6 +9,10 @@ use crate::{
         ingest_research_signals_file, HandoffError, ResearchSignalIngestOptions,
         ResearchSignalIngestReport,
     },
+    materialization::{
+        materialize_decisions, DecisionMaterializationOptions, DecisionMaterializationReport,
+        MaterializationError,
+    },
     observability::{summary_from_store, ObservabilityError},
     projections::{DecisionProjection, SignalProjection},
     queries::{
@@ -37,6 +41,7 @@ enum Command {
     Order { order_id: String },
     Fill { fill_id: String },
     IngestResearchSignals { input_path: PathBuf },
+    MaterializeDecisions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +59,7 @@ enum RuntimeError {
     Store(StoreError),
     Query(QueryError),
     Handoff(HandoffError),
+    Materialization(MaterializationError),
     Observability(ObservabilityError),
     Io(io::Error),
     Json(serde_json::Error),
@@ -67,6 +73,7 @@ impl std::fmt::Display for RuntimeError {
             Self::Store(error) => write!(f, "{error}"),
             Self::Query(error) => write!(f, "{error}"),
             Self::Handoff(error) => write!(f, "{error}"),
+            Self::Materialization(error) => write!(f, "{error}"),
             Self::Observability(error) => write!(f, "{error}"),
             Self::Io(error) => write!(f, "{error}"),
             Self::Json(error) => write!(f, "{error}"),
@@ -95,6 +102,12 @@ impl From<ObservabilityError> for RuntimeError {
 impl From<HandoffError> for RuntimeError {
     fn from(value: HandoffError) -> Self {
         Self::Handoff(value)
+    }
+}
+
+impl From<MaterializationError> for RuntimeError {
+    fn from(value: MaterializationError) -> Self {
+        Self::Materialization(value)
     }
 }
 
@@ -210,6 +223,9 @@ where
                 input_path: PathBuf::from(path),
             }
         }
+        [materialize, entity] if materialize == "materialize" && entity == "decisions" => {
+            Command::MaterializeDecisions
+        }
         _ => {
             return Err(RuntimeError::Usage(format!(
                 "invalid command\n\n{}",
@@ -228,14 +244,20 @@ where
 
 fn usage() -> String {
     format!(
-        "Usage:\n  twoexcamim [summary] [--store PATH] [--json]\n  twoexcamim signal <signal-id> [--store PATH] [--json]\n  twoexcamim decision <decision-id> [--store PATH] [--json]\n  twoexcamim order <order-id> [--store PATH] [--json]\n  twoexcamim fill <fill-id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nDefault store path: {DEFAULT_STORE_PATH}"
+        "Usage:\n  twoexcamim [summary] [--store PATH] [--json]\n  twoexcamim signal <signal-id> [--store PATH] [--json]\n  twoexcamim decision <decision-id> [--store PATH] [--json]\n  twoexcamim order <order-id> [--store PATH] [--json]\n  twoexcamim fill <fill-id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n\nDefault store path: {DEFAULT_STORE_PATH}"
     )
 }
 
 fn execute(config: Config) -> Result<String, RuntimeError> {
-    if config.dry_run && !matches!(config.command, Command::IngestResearchSignals { .. }) {
+    if config.dry_run
+        && !matches!(
+            config.command,
+            Command::IngestResearchSignals { .. } | Command::MaterializeDecisions
+        )
+    {
         return Err(RuntimeError::Usage(
-            "--dry-run is only supported for ingest research-signals".to_string(),
+            "--dry-run is only supported for ingest research-signals and materialize decisions"
+                .to_string(),
         ));
     }
 
@@ -253,6 +275,61 @@ fn execute(config: Config) -> Result<String, RuntimeError> {
         Command::IngestResearchSignals { ref input_path } => {
             render_research_signal_ingest(&store, &config, input_path)
         }
+        Command::MaterializeDecisions => render_materialize_decisions(&query_service, &config),
+    }
+}
+
+fn render_materialize_decisions(
+    query_service: &QueryService<'_>,
+    config: &Config,
+) -> Result<String, RuntimeError> {
+    let report = materialize_decisions(
+        query_service,
+        DecisionMaterializationOptions {
+            dry_run: config.dry_run,
+        },
+    )?;
+
+    match config.format {
+        OutputFormat::Text => {
+            let mut lines = vec![
+                "Decision Materialization".to_string(),
+                format!("store_path: {}", config.store_path.display()),
+                format!("dry_run: {}", report.dry_run),
+                format!("batch_trace_id: {}", report.batch_trace_id),
+                format!("signals_inspected: {}", report.signals_inspected),
+                format!("eligible: {}", report.eligible),
+                format!("skipped: {}", report.skipped),
+                format!("blocked: {}", report.blocked),
+                format!("inconsistent: {}", report.inconsistent),
+                format!("decisions_materialized: {}", report.decisions_materialized),
+                format!("duplicates: {}", report.duplicates),
+                "items:".to_string(),
+            ];
+
+            if report.items.is_empty() {
+                lines.push("- none".to_string());
+            } else {
+                for item in &report.items {
+                    lines.push(format!(
+                        "- signal_id={} disposition={:?} policy_status={} decision_id={} persisted={}",
+                        item.signal_id,
+                        item.disposition,
+                        item.policy_status,
+                        display_option(item.candidate_decision_id.as_deref()),
+                        item.persisted
+                    ));
+                    for reason in &item.reasons {
+                        lines.push(format!("  reason={reason}"));
+                    }
+                }
+            }
+
+            Ok(lines.join("\n"))
+        }
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(
+            &decision_materialization_json(&report, &config.store_path),
+        )?),
     }
 }
 
@@ -1273,6 +1350,40 @@ fn research_signal_ingest_json(report: &ResearchSignalIngestReport, store_path: 
         "rejected_reasons": report.rejected_reasons,
         "ingested_signals": report.ingested_signals,
         "rejections": report.rejections,
+    })
+}
+
+fn decision_materialization_json(
+    report: &DecisionMaterializationReport,
+    store_path: &PathBuf,
+) -> Value {
+    json!({
+        "kind": "materialize_decisions",
+        "store_path": store_path.display().to_string(),
+        "dry_run": report.dry_run,
+        "batch_trace_id": report.batch_trace_id,
+        "signals_inspected": report.signals_inspected,
+        "eligible": report.eligible,
+        "skipped": report.skipped,
+        "blocked": report.blocked,
+        "inconsistent": report.inconsistent,
+        "decisions_materialized": report.decisions_materialized,
+        "duplicates": report.duplicates,
+        "items": report.items.iter().map(decision_materialization_item_json).collect::<Vec<_>>(),
+    })
+}
+
+fn decision_materialization_item_json(
+    item: &crate::materialization::DecisionMaterializationItem,
+) -> Value {
+    json!({
+        "signal_id": item.signal_id,
+        "policy_status": item.policy_status,
+        "disposition": format!("{:?}", item.disposition),
+        "candidate_decision_id": item.candidate_decision_id,
+        "persisted": item.persisted,
+        "reasons": item.reasons,
+        "notes": item.notes,
     })
 }
 

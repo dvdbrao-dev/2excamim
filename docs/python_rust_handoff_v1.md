@@ -134,6 +134,10 @@ Rust conserva la validacion contractual, la traduccion a eventos y la persistenc
 - ingestion de otras familias de artefactos research
 - ingestion live en memoria Python -> Rust
 
+Nota:
+
+- si una señal ingestada desde research sigue sin `signal.confirmed`, el flow de materialización de decisiones la verá como `Weak` y no la materializará en v1
+
 ## Deuda abierta
 
 - sustituir el decoder Python por lectura nativa en Rust si compensa

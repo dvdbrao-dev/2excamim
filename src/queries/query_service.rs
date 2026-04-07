@@ -24,8 +24,16 @@ impl<'a> QueryService<'a> {
         Self { store }
     }
 
+    pub fn store_ref(&self) -> &'a JsonlEventStore {
+        self.store
+    }
+
     pub fn all_events(&self) -> Result<Vec<StoredEvent>, QueryError> {
         Ok(self.store.read_all()?)
+    }
+
+    pub fn all_signal_projections(&self) -> Result<Vec<SignalProjection>, QueryError> {
+        self.signal_projections()
     }
 
     pub fn signal_projection(
