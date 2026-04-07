@@ -32,6 +32,10 @@ El batch runner v1 ejecuta siempre estas fases, en este orden:
 
 No reimplementa la semantica de negocio. Reutiliza las mismas capas y funciones del runtime.
 
+Nota:
+
+- en v1 el batch runner todavía se detiene antes de `materialize orders`
+
 ## Report consolidado
 
 Salida minima:

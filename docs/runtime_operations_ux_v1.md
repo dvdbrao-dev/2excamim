@@ -11,6 +11,7 @@ Hacer la CLI del runtime mas coherente para operacion manual y futura automatiza
 - `policy`
 - `ingest`
 - `materialize`
+- `materialize orders`
 - `run batch`
 
 Formas principales:
@@ -21,6 +22,7 @@ cargo run -- inspect signal sig-1
 cargo run -- policy signal sig-1
 cargo run -- ingest research-signals ./signals.parquet --dry-run
 cargo run -- materialize decisions --dry-run
+cargo run -- materialize orders --dry-run
 cargo run -- run batch --research-signals ./signals.parquet --dry-run
 ```
 

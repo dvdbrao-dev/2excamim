@@ -17,6 +17,7 @@ pub use batch_runner::*;
 pub use codecs::*;
 pub use commands::{
     CommandError, ConfirmSignalCommand, FormDecisionCommand, GenerateSignalCommand,
+    RegisterOrderCommand,
 };
 pub use events::*;
 pub use handoff::*;

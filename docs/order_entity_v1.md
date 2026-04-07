@@ -43,3 +43,8 @@ The entity is created by:
   exists.
 - `order_query_v1` provides a derived inspection surface for `order_id`, but it does not create a
   new persisted order state machine.
+
+## Runtime flow
+
+`Order Materialization Flow v1` can now persist `order.registered` from eligible `decision.formed`
+records by CLI, without implying submission or execution.

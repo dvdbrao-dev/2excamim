@@ -56,6 +56,10 @@ impl<'a> QueryService<'a> {
             .find(|projection| projection.decision_id == decision_id))
     }
 
+    pub fn all_decision_projections(&self) -> Result<Vec<DecisionProjection>, QueryError> {
+        self.decision_projections()
+    }
+
     pub fn timeline_for_signal(&self, signal_id: &str) -> Result<Vec<StoredEvent>, QueryError> {
         Ok(self.store.find_by_signal_id(signal_id)?)
     }

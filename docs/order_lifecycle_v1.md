@@ -45,3 +45,8 @@ without introducing a gateway, orchestration runtime, or full order state machin
 - No write-time historical enforcement is introduced.
 - Submission without prior registration can be detected as inconsistent at query time, but it is
   not blocked at append time in this slice.
+
+## Runtime materialization note
+
+`materialize orders` only creates `order.registered`. It intentionally does not emit
+`order.submitted` in v1.

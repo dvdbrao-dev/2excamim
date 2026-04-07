@@ -40,6 +40,10 @@ Uso encadenado desde batch:
 cargo run -- run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run
 ```
 
+Siguiente seam operativo:
+
+- decisiones materializadas pueden evaluarse después con `materialize orders`
+
 Errores JSON:
 
 - si se usa `--json`, los errores de runtime salen estructurados por `stderr`

@@ -326,6 +326,7 @@ cargo run -- inspect signal sig-1
 cargo run -- policy signal sig-1
 cargo run -- ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run
 cargo run -- materialize decisions --dry-run
+cargo run -- materialize orders --dry-run
 cargo run -- run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run
 ```
 
@@ -370,6 +371,32 @@ El report consolidado incluye:
 Detalle:
 
 - [`docs/batch_runner_v1.md`](/root/2excamim/docs/batch_runner_v1.md)
+
+## Order Materialization Flow v1
+
+El runtime ya puede evaluar decisiones elegibles y materializar `order.registered` sin someter órdenes automáticamente:
+
+```bash
+cargo run -- materialize orders --store ./var/events.jsonl --dry-run
+```
+
+Persistencia prudente:
+
+```bash
+cargo run -- materialize orders --store ./var/events.jsonl
+```
+
+El flow:
+
+- inspecciona decisiones visibles en projections
+- reutiliza `decision_promotion_policy`
+- registra `order.registered` solo para casos claramente elegibles
+- mantiene identidad determinista `order-{decision_id}`
+- usa `venue = paper` como handle local offline en v1
+
+Detalle:
+
+- [`docs/order_materialization_flow_v1.md`](/root/2excamim/docs/order_materialization_flow_v1.md)
 
 ## Prediction Markets Research (Python Lab)
 

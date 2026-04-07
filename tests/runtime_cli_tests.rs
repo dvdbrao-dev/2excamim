@@ -273,6 +273,7 @@ fn cli_help_returns_zero_and_shows_primary_verbs() {
     assert!(stdout.contains("inspect <signal|decision|order|fill>"));
     assert!(stdout.contains("policy <signal|decision|order>"));
     assert!(stdout.contains("materialize decisions"));
+    assert!(stdout.contains("materialize orders"));
     assert!(stdout.contains("run batch --research-signals"));
 }
 

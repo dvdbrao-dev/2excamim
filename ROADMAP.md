@@ -70,6 +70,23 @@ Incluye:
 - `dry-run` y salida estructurada
 - persistencia prudente de `decision.formed` para casos claramente elegibles
 
+## Order Materialization Flow v1
+
+Estado: implementado en version minima
+
+Incluye:
+
+- comando runtime `materialize orders`
+- evaluacion explicable sobre `decision_promotion_policy`
+- `dry-run` y salida estructurada
+- persistencia prudente de `order.registered` para casos claramente elegibles
+- identidad determinista `order-{decision_id}`
+
+Pendiente siguiente:
+
+- decidir si el siguiente paso merece `order.submitted` manual o automática
+- mantener este slice sin gateway ni ejecución live
+
 ## Batch Runner v1
 
 Estado: implementado en version minima

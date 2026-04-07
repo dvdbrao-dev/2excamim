@@ -11,8 +11,9 @@ use crate::{
         ResearchSignalIngestReport,
     },
     materialization::{
-        materialize_decisions, DecisionMaterializationOptions, DecisionMaterializationReport,
-        MaterializationError,
+        materialize_decisions, materialize_orders, DecisionMaterializationOptions,
+        DecisionMaterializationReport, MaterializationError, OrderMaterializationOptions,
+        OrderMaterializationReport,
     },
     observability::{summary_from_store, ObservabilityError, ObservabilitySummary},
     projections::{DecisionProjection, SignalProjection},
@@ -46,6 +47,7 @@ enum Command {
     PolicyOrder { order_id: String },
     IngestResearchSignals { input_path: PathBuf },
     MaterializeDecisions,
+    MaterializeOrders,
     RunBatch { research_signals_path: PathBuf },
 }
 
@@ -268,6 +270,9 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError> {
         [materialize, entity] if materialize == "materialize" && entity == "decisions" => {
             Command::MaterializeDecisions
         }
+        [materialize, entity] if materialize == "materialize" && entity == "orders" => {
+            Command::MaterializeOrders
+        }
         [run, batch, flag, path]
             if run == "run" && batch == "batch" && flag == "--research-signals" =>
         {
@@ -293,7 +298,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError> {
 
 fn usage() -> String {
     format!(
-        "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n  twoexcamim run batch --research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim materialize decisions --dry-run --json\n  twoexcamim run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run\n\nDefault store path: {DEFAULT_STORE_PATH}"
+        "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize orders [--store PATH] [--dry-run] [--json]\n  twoexcamim run batch --research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim materialize decisions --dry-run --json\n  twoexcamim materialize orders --dry-run --json\n  twoexcamim run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run\n\nDefault store path: {DEFAULT_STORE_PATH}"
     )
 }
 
@@ -303,11 +308,12 @@ fn execute(config: Config) -> Result<String, RuntimeError> {
             config.command,
             Command::IngestResearchSignals { .. }
                 | Command::MaterializeDecisions
+                | Command::MaterializeOrders
                 | Command::RunBatch { .. }
         )
     {
         return Err(RuntimeError::Usage(
-            "--dry-run is only supported for ingest research-signals, materialize decisions and run batch"
+            "--dry-run is only supported for ingest research-signals, materialize decisions, materialize orders and run batch"
                 .to_string(),
         ));
     }
@@ -336,6 +342,7 @@ fn execute(config: Config) -> Result<String, RuntimeError> {
             render_research_signal_ingest(&store, &config, input_path)
         }
         Command::MaterializeDecisions => render_materialize_decisions(&query_service, &config),
+        Command::MaterializeOrders => render_materialize_orders(&query_service, &config),
         Command::RunBatch {
             ref research_signals_path,
         } => render_batch_run(&store, &config, research_signals_path),
@@ -451,6 +458,61 @@ fn render_materialize_decisions(
         OutputFormat::Json => Ok(serde_json::to_string_pretty(
             &decision_materialization_json(&report, &config.store_path),
         )?),
+    }
+}
+
+fn render_materialize_orders(
+    query_service: &QueryService<'_>,
+    config: &Config,
+) -> Result<String, RuntimeError> {
+    let report = materialize_orders(
+        query_service,
+        OrderMaterializationOptions {
+            dry_run: config.dry_run,
+        },
+    )?;
+
+    match config.format {
+        OutputFormat::Text => {
+            let mut lines = vec![
+                "Order Materialization".to_string(),
+                format!("store_path: {}", config.store_path.display()),
+                format!("dry_run: {}", report.dry_run),
+                format!("batch_trace_id: {}", report.batch_trace_id),
+                format!("decisions_inspected: {}", report.decisions_inspected),
+                format!("eligible: {}", report.eligible),
+                format!("skipped: {}", report.skipped),
+                format!("blocked: {}", report.blocked),
+                format!("inconsistent: {}", report.inconsistent),
+                format!("orders_registered: {}", report.orders_registered),
+                format!("duplicates: {}", report.duplicates),
+                "items:".to_string(),
+            ];
+
+            if report.items.is_empty() {
+                lines.push("- none".to_string());
+            } else {
+                for item in &report.items {
+                    lines.push(format!(
+                        "- decision_id={} disposition={:?} policy_status={} order_id={} persisted={}",
+                        item.decision_id,
+                        item.disposition,
+                        item.policy_status,
+                        display_option(item.candidate_order_id.as_deref()),
+                        item.persisted
+                    ));
+                    for reason in &item.reasons {
+                        lines.push(format!("  reason={reason}"));
+                    }
+                }
+            }
+
+            Ok(lines.join("\n"))
+        }
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(&order_materialization_json(
+            &report,
+            &config.store_path,
+        ))?),
     }
 }
 
@@ -1598,6 +1660,23 @@ fn decision_materialization_json(
     })
 }
 
+fn order_materialization_json(report: &OrderMaterializationReport, store_path: &PathBuf) -> Value {
+    json!({
+        "kind": "materialize_orders",
+        "store_path": store_path.display().to_string(),
+        "dry_run": report.dry_run,
+        "batch_trace_id": report.batch_trace_id,
+        "decisions_inspected": report.decisions_inspected,
+        "eligible": report.eligible,
+        "skipped": report.skipped,
+        "blocked": report.blocked,
+        "inconsistent": report.inconsistent,
+        "orders_registered": report.orders_registered,
+        "duplicates": report.duplicates,
+        "items": report.items.iter().map(order_materialization_item_json).collect::<Vec<_>>(),
+    })
+}
+
 fn summary_json(summary: &ObservabilitySummary, store_path: &PathBuf) -> Value {
     json!({
         "kind": "summary",
@@ -1628,6 +1707,20 @@ fn decision_materialization_item_json(
         "policy_status": item.policy_status,
         "disposition": format!("{:?}", item.disposition),
         "candidate_decision_id": item.candidate_decision_id,
+        "persisted": item.persisted,
+        "reasons": item.reasons,
+        "notes": item.notes,
+    })
+}
+
+fn order_materialization_item_json(
+    item: &crate::materialization::OrderMaterializationItem,
+) -> Value {
+    json!({
+        "decision_id": item.decision_id,
+        "policy_status": item.policy_status,
+        "disposition": format!("{:?}", item.disposition),
+        "candidate_order_id": item.candidate_order_id,
         "persisted": item.persisted,
         "reasons": item.reasons,
         "notes": item.notes,
