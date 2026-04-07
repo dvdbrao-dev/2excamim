@@ -248,6 +248,41 @@ Pendiente mayor despues de este slice:
 
 - traduccion del output Python de research a eventos Rust del sistema
 - integracion Python -> Rust sobre una interfaz estructurada y estable
+
+## Python -> Rust Handoff v1
+
+El runtime ya puede ingerir offline el output real del laboratorio Python y traducirlo a eventos del sistema:
+
+```bash
+cargo run -- ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl
+```
+
+JSON opcional:
+
+```bash
+cargo run -- ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --json
+```
+
+Alcance de esta version:
+
+- lee el Parquet actual del lab Python
+- valida shape minimo por fila
+- traduce a `signal.generated`
+- persiste en el JSONL store existente
+- reporta `records_read`, `accepted`, `deduplicated` y `rejected`
+
+No hace todavia:
+
+- integracion live
+- scheduler
+- gateway
+- resolver
+- otras familias de eventos research
+
+Contrato y decisiones:
+
+- [`docs/python_rust_handoff_v1.md`](/root/2excamim/docs/python_rust_handoff_v1.md)
+- [`docs/ADR-008-python-rust-handoff-v1.md`](/root/2excamim/docs/ADR-008-python-rust-handoff-v1.md)
 - permite reejecutar fixtures conocidas por nombre
 - no introduce bus, red, runtime, base de datos ni async
 

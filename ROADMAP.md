@@ -40,3 +40,20 @@ Pendiente siguiente:
 
 - traducción del output Python de research a eventos del sistema Rust
 - integración Python -> Rust sin introducir runtime live ni scheduler real todavía
+
+## Python -> Rust Handoff v1
+
+Estado: implementado en version minima
+
+Incluye:
+
+- comando CLI offline para ingerir `latest_signals.parquet`
+- frontera explicita entre output research y eventos Rust
+- traduccion contractual a `signal.generated`
+- validacion minima por fila y reporte de aceptados, rechazados y deduplicados
+
+Pendiente siguiente:
+
+- ampliar el handoff sin salir de modo offline
+- decidir si el decoder Parquet pasa a Rust nativo
+- evaluar cuando el output research justifica `hypothesis.generated`

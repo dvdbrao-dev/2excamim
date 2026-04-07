@@ -55,3 +55,25 @@ No incluye todavia:
 Siguiente integracion mayor:
 
 - traducir el output estructurado del research Python a eventos Rust consumibles por el runtime
+
+## Handoff Python -> Rust v1
+
+La frontera minima actual entre research y runtime es:
+
+- Python produce `latest_signals.parquet`
+- un adaptador explicito decodifica ese Parquet a registros JSON
+- Rust valida esos registros, los traduce y persiste `signal.generated`
+
+Propiedades:
+
+- offline
+- local
+- trazable por fichero y fila
+- sin scheduler
+- sin live ingestion
+- sin red
+
+Limite actual:
+
+- el handoff no confirma señales ni forma decisiones
+- el runtime no consume todavia otras salidas del laboratorio Python

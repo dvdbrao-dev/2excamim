@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use serde_json::{json, Value};
 
 use crate::{
+    handoff::{ingest_research_signals_file, HandoffError, ResearchSignalIngestReport},
     observability::{summary_from_store, ObservabilityError},
     projections::{DecisionProjection, SignalProjection},
     queries::{
@@ -32,6 +33,7 @@ enum Command {
     Decision { decision_id: String },
     Order { order_id: String },
     Fill { fill_id: String },
+    IngestResearchSignals { input_path: PathBuf },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +49,7 @@ enum RuntimeError {
     NotFound { entity: &'static str, id: String },
     Store(StoreError),
     Query(QueryError),
+    Handoff(HandoffError),
     Observability(ObservabilityError),
     Io(io::Error),
     Json(serde_json::Error),
@@ -59,6 +62,7 @@ impl std::fmt::Display for RuntimeError {
             Self::NotFound { entity, id } => write!(f, "{entity} {id} not found in store"),
             Self::Store(error) => write!(f, "{error}"),
             Self::Query(error) => write!(f, "{error}"),
+            Self::Handoff(error) => write!(f, "{error}"),
             Self::Observability(error) => write!(f, "{error}"),
             Self::Io(error) => write!(f, "{error}"),
             Self::Json(error) => write!(f, "{error}"),
@@ -81,6 +85,12 @@ impl From<QueryError> for RuntimeError {
 impl From<ObservabilityError> for RuntimeError {
     fn from(value: ObservabilityError) -> Self {
         Self::Observability(value)
+    }
+}
+
+impl From<HandoffError> for RuntimeError {
+    fn from(value: HandoffError) -> Self {
+        Self::Handoff(value)
     }
 }
 
@@ -187,6 +197,11 @@ where
         [inspect, entity, id] if inspect == "inspect" && entity == "fill" => Command::Fill {
             fill_id: id.clone(),
         },
+        [ingest, kind, path] if ingest == "ingest" && kind == "research-signals" => {
+            Command::IngestResearchSignals {
+                input_path: PathBuf::from(path),
+            }
+        }
         _ => {
             return Err(RuntimeError::Usage(format!(
                 "invalid command\n\n{}",
@@ -204,7 +219,7 @@ where
 
 fn usage() -> String {
     format!(
-        "Usage:\n  twoexcamim [summary] [--store PATH] [--json]\n  twoexcamim signal <signal-id> [--store PATH] [--json]\n  twoexcamim decision <decision-id> [--store PATH] [--json]\n  twoexcamim order <order-id> [--store PATH] [--json]\n  twoexcamim fill <fill-id> [--store PATH] [--json]\n\nDefault store path: {DEFAULT_STORE_PATH}"
+        "Usage:\n  twoexcamim [summary] [--store PATH] [--json]\n  twoexcamim signal <signal-id> [--store PATH] [--json]\n  twoexcamim decision <decision-id> [--store PATH] [--json]\n  twoexcamim order <order-id> [--store PATH] [--json]\n  twoexcamim fill <fill-id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--json]\n\nDefault store path: {DEFAULT_STORE_PATH}"
     )
 }
 
@@ -220,6 +235,67 @@ fn execute(config: Config) -> Result<String, RuntimeError> {
         }
         Command::Order { ref order_id } => render_order(&query_service, &config, order_id),
         Command::Fill { ref fill_id } => render_fill(&query_service, &config, fill_id),
+        Command::IngestResearchSignals { ref input_path } => {
+            render_research_signal_ingest(&store, &config, input_path)
+        }
+    }
+}
+
+fn render_research_signal_ingest(
+    store: &JsonlEventStore,
+    config: &Config,
+    input_path: &PathBuf,
+) -> Result<String, RuntimeError> {
+    let report = ingest_research_signals_file(store, input_path)?;
+
+    match config.format {
+        OutputFormat::Text => {
+            let mut lines = vec![
+                "Research Signal Ingest".to_string(),
+                format!("store_path: {}", config.store_path.display()),
+                format!("input_path: {}", report.input_path.display()),
+                format!("records_read: {}", report.records_read),
+                format!("accepted: {}", report.accepted),
+                format!("deduplicated: {}", report.deduplicated),
+                format!("rejected: {}", report.rejected),
+                format!(
+                    "generated_event_types: {}",
+                    display_list(&report.generated_event_types)
+                ),
+                "ingested_signals:".to_string(),
+            ];
+
+            if report.ingested_signals.is_empty() {
+                lines.push("- none".to_string());
+            } else {
+                for signal in &report.ingested_signals {
+                    lines.push(format!(
+                        "- row={} signal_id={} event_type={} deduplicated={}",
+                        signal.row_number, signal.signal_id, signal.event_type, signal.deduplicated
+                    ));
+                }
+            }
+
+            lines.push("rejections:".to_string());
+            if report.rejections.is_empty() {
+                lines.push("- none".to_string());
+            } else {
+                for rejection in &report.rejections {
+                    lines.push(format!(
+                        "- row={} market_id={} reason={}",
+                        rejection.row_number,
+                        display_option(rejection.market_id.as_deref()),
+                        rejection.reason
+                    ));
+                }
+            }
+
+            Ok(lines.join("\n"))
+        }
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(&research_signal_ingest_json(
+            &report,
+            &config.store_path,
+        ))?),
     }
 }
 
@@ -1134,6 +1210,21 @@ fn event_timeline_json(events: &[StoredEvent]) -> Value {
             })
             .collect(),
     )
+}
+
+fn research_signal_ingest_json(report: &ResearchSignalIngestReport, store_path: &PathBuf) -> Value {
+    json!({
+        "kind": "ingest_research_signals",
+        "store_path": store_path.display().to_string(),
+        "input_path": report.input_path.display().to_string(),
+        "records_read": report.records_read,
+        "accepted": report.accepted,
+        "deduplicated": report.deduplicated,
+        "rejected": report.rejected,
+        "generated_event_types": report.generated_event_types,
+        "ingested_signals": report.ingested_signals,
+        "rejections": report.rejections,
+    })
 }
 
 fn events_for_order(events: &[StoredEvent], order_id: &str) -> Vec<StoredEvent> {
