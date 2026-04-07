@@ -5,6 +5,15 @@ target/
 
 .codex
 
+# Accidental root artifacts
+/Blocked
+/Eligible
+/Inconsistent
+/Rust
+/Weak
+/fill
+/orden
+
 # Python research MVP
 research_prediction_markets/.venv/
 research_prediction_markets/**/__pycache__/
