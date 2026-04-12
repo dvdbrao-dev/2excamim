@@ -1,0 +1,9 @@
+[package]
+name = "market-watch"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+market-ingestion = { path = "../../crates/market-ingestion" }
+serde = { workspace = true }
+serde_json = { workspace = true }

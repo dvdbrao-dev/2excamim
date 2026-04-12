@@ -1,13 +1,23 @@
+[workspace]
+members = [".", "crates/market-domain", "crates/market-ingestion", "crates/market-signals", "agents/market-watch"]
+resolver = "2"
+
+[workspace.dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
 [package]
 name = "twoexcamim"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1", features = ["v4", "serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = "1"

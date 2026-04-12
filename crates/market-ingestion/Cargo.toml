@@ -1,0 +1,11 @@
+[package]
+name = "market-ingestion"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = { workspace = true }
+market-domain = { path = "../market-domain" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ureq = "2"
