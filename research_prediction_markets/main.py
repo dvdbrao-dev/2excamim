@@ -28,11 +28,9 @@ OUTPUT_COLUMNS = [
 ]
 
 
-def build_signals_dataframe() -> pd.DataFrame:
-    markets = fetch_all_markets()
-    trades = fetch_all_trades()
+def assemble_signals_dataframe(markets, trades, now=None) -> pd.DataFrame:
     features = compute_mvp_features(markets, trades)
-    signals = generate_mvp_signals(markets, features)
+    signals = generate_mvp_signals(markets, features, now=now)
 
     market_map = {market.market_id: market for market in markets}
     feature_values: dict[str, dict[str, float]] = {}
@@ -62,6 +60,12 @@ def build_signals_dataframe() -> pd.DataFrame:
         )
 
     return pd.DataFrame(rows, columns=OUTPUT_COLUMNS)
+
+
+def build_signals_dataframe() -> pd.DataFrame:
+    markets = fetch_all_markets()
+    trades = fetch_all_trades()
+    return assemble_signals_dataframe(markets, trades)
 
 
 def write_latest_signals_parquet(dataframe: pd.DataFrame) -> Path:

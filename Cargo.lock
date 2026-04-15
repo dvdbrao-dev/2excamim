@@ -673,6 +673,7 @@ name = "twoexcamim"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "market-domain",
  "pretty_assertions",
  "serde",
  "serde_json",

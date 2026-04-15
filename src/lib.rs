@@ -1,3 +1,4 @@
+pub mod agents;
 pub mod application;
 pub mod batch_runner;
 pub mod codecs;
@@ -12,6 +13,7 @@ pub mod runtime;
 pub mod scenarios;
 pub mod store;
 
+pub use agents::*;
 pub use application::*;
 pub use batch_runner::*;
 pub use codecs::*;

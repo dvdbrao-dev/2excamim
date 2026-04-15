@@ -1,0 +1,21 @@
+{
+  "rules": [
+    {
+      "signal_name": "activity_spike",
+      "direction": "Yes",
+      "source": "Synthetic",
+      "status": "promoted",
+      "confidence_threshold": 0.5,
+      "horizon_seconds": 3600
+    },
+    {
+      "signal_name": "mean_reversion",
+      "status": "review"
+    },
+    {
+      "signal_name": "odds_jump",
+      "direction": "No",
+      "status": "frozen"
+    }
+  ]
+}

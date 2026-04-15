@@ -1,0 +1,26 @@
+{
+  "metadata": {
+    "generated_at": "2026-04-13T17:00:00+00:00",
+    "source_analysis": "propose-confirmation-policy --eras=3 --window_size_seconds=0 --confidence_thresholds=[0.5] --horizons=[3600] --delta_threshold=0.02",
+    "eras_analyzed": 3,
+    "selection_criteria_summary": "promote_if_eras>=2; freeze_if_eras>=2; min_sample_count=2; threshold_consistency_min_rate=0.75"
+  },
+  "rules": [
+    {
+      "signal_name": "activity_spike",
+      "direction": null,
+      "source": null,
+      "status": "review",
+      "confidence_threshold": null,
+      "horizon_seconds": null
+    },
+    {
+      "signal_name": "odds_jump",
+      "direction": null,
+      "source": null,
+      "status": "promoted",
+      "confidence_threshold": 0.5,
+      "horizon_seconds": null
+    }
+  ]
+}
