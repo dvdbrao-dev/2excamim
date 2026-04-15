@@ -1,162 +1,326 @@
-# Roadmap
+# Roadmap de 2EXCAMIM
 
-## Prediction Markets Research MVP
+Este roadmap describe el estado real del sistema actual. No es una lista histórica de deseos: separa lo ya construido, el siguiente frente de trabajo y lo que se mantiene fuera de alcance por ahora.
 
-Estado: implementado en versión mínima
+2EXCAMIM sigue siendo un sistema offline y append-only orientado a investigación, confirmación, gobierno y paper execution controlada. El sistema todavía no debe considerarse una plataforma de trading live.
 
-Incluye:
+## 1. Research y Generación de Señales
 
-- ingestión básica Kalshi
-- ingestión básica Polymarket
-- features MVP:
-  - spread_tight
-  - volume_spike_24h
-  - price_deviation_vwap_1h
-- señales MVP:
-  - tight_spread_momentum
-  - vwap_reversion
-- export a Parquet
-
-Pendiente:
-
-- histórico persistido para baselines robustos
-- validación estadística
-- integración con runtime Rust
-- traducción de output Python a eventos del sistema
-
-## Runtime Skeleton v1
-
-Estado: implementado en versión mínima
+Estado: implementado en versión funcional mínima.
 
 Incluye:
 
-- binario CLI en Rust para inspección del log JSONL
-- entrypoint ejecutable claro para evaluación del sistema actual
-- inspección de `signal`, `decision`, `order` y `fill`
-- consulta de governance, policy y boundaries reutilizando `QueryService`
-- salida estructurada en texto con JSON opcional
+- Ingesta e investigación inicial de mercados de predicción.
+- Generación de señales desde outputs de research.
+- Export de señales desde Python y handoff hacia Rust.
+- Traducción contractual a eventos canónicos `signal.generated`.
+- Validación de registros, deduplicación y reportes de ingestión.
 
 Pendiente siguiente:
 
-- traducción del output Python de research a eventos del sistema Rust
-- integración Python -> Rust sin introducir runtime live ni scheduler real todavía
+- Mejorar datasets históricos y baselines estadísticos.
+- Mantener la frontera Python -> Rust simple y audititable.
+- Evaluar cuándo una señal justifica materializar también `hypothesis.generated`.
 
-## Python -> Rust Handoff v1
+Diferido / no prioritario:
 
-Estado: implementado en version minima
+- Convertir research en un servicio live.
+- Acoplar el runtime Rust a internals Python.
+
+## 2. Confirmación de Señales
+
+Estado: implementado y operativo.
 
 Incluye:
 
-- comando CLI offline para ingerir `latest_signals.parquet`
-- frontera explicita entre output research y eventos Rust
-- traduccion contractual a `signal.generated`
-- validacion minima por fila y reporte de aceptados, rechazados y deduplicados
-- `dry-run`, batch trace y report estructurado de ingestión
+- `ConfirmationAgent` v1.
+- `ConfirmationRunner`.
+- Scorecards de confirmación.
+- Persistencia de `signal.confirmed` para señales elegibles.
+- Políticas de confirmación configurables desde JSON.
+- Saltos explícitos por señales ya confirmadas, congeladas o fuera de política.
+- Reportes de aceptación, rechazo, baja confianza, stale y overrides de política.
 
 Pendiente siguiente:
 
-- ampliar el handoff sin salir de modo offline
-- decidir si el decoder Parquet pasa a Rust nativo
-- evaluar cuando el output research justifica `hypothesis.generated`
+- Consolidar perfiles de política por familia de señal cuando haya suficiente evidencia.
+- Seguir reduciendo ambigüedad entre research score, confirmation score y readiness.
 
-## Decision Materialization Flow v1
+Diferido / no prioritario:
 
-Estado: implementado en version minima
+- Confirmación basada en red o feeds live dentro del runtime.
+- Automatización always-on.
 
-Incluye:
+## 3. Evaluación Analítica y Validación
 
-- comando runtime `materialize decisions`
-- evaluacion explicable sobre readiness, governance y promotion policy
-- `dry-run` y salida estructurada
-- persistencia prudente de `decision.formed` para casos claramente elegibles
-
-## Order Materialization Flow v1
-
-Estado: implementado en version minima
+Estado: implementado y usado como base de gobierno.
 
 Incluye:
 
-- comando runtime `materialize orders`
-- evaluacion explicable sobre `decision_promotion_policy`
-- `dry-run` y salida estructurada
-- persistencia prudente de `order.registered` para casos claramente elegibles
-- identidad determinista `order-{decision_id}`
+- Medición ex-post de outcomes de señales confirmadas.
+- Comparación entre señales confirmadas y señales generadas.
+- Policy sweep sobre thresholds, horizontes y delta mínimo.
+- Advisory classification por familia de señal.
+- Validación walk-forward / era-based.
+- Propuesta exportable de políticas de confirmación.
 
 Pendiente siguiente:
 
-- decidir si el siguiente paso merece `order.submitted` manual o automática
-- mantener este slice sin gateway ni ejecución live
+- Aumentar cobertura de datos históricos para que las conclusiones sean menos frágiles.
+- Mantener las reglas de clasificación explícitas y revisables.
+- Usar los reportes analíticos como input para decisiones de promoción, no como ejecución automática.
 
-## Order Submission Boundary v1
+Diferido / no prioritario:
 
-Estado: implementado en version minima
+- Optimización opaca o demasiado automática de parámetros.
+- Entrenamiento o selección de políticas sin trazabilidad.
 
-Incluye:
+## 4. Readiness y Gobierno de Señales
 
-- comando runtime `submit orders`
-- `submission policy` explícita sobre órdenes locales
-- `dry-run` y salida estructurada
-- persistencia prudente de `order.submitted`
-- preservación de `venue` local actual, incluida la convención `paper`
-
-Pendiente siguiente:
-
-- accepted/rejected
-- integración con gateway real
-- follow-up de ejecución sin introducir runtime live todavía
-
-## Execution Observation / Fill Ingestion v1
-
-Estado: implementado en version minima
+Estado: implementado en primera versión.
 
 Incluye:
 
-- comando runtime `observe fill`
-- validacion minima sobre la relacion con la `order` local
-- `dry-run` y salida estructurada
-- persistencia prudente de `fill.received`
-- deteccion de duplicados por idempotency key contractual
-- reflejo de ejecucion observada en `order_lifecycle`
+- Materialización de readiness/governance para familias de señales.
+- Estados explícitos: `experimental`, `candidate`, `promoted`, `frozen`.
+- Evidencia resumida por familia, dirección y fuente cuando está disponible.
+- Provenance y rationale resumidos.
+- Export JSON en `var/readiness/confirmation_readiness.json`.
+- CLI `materialize-confirmation-readiness`.
 
 Pendiente siguiente:
 
-- reconciliacion avanzada
-- accepted/rejected
-- integracion con gateway real
-- follow-up de ejecucion sin introducir runtime live todavia
+- Usar readiness como input visible para humanos antes de ampliar automatización.
+- Afinar reglas con más datos reales de outcomes y walk-forward.
+- Alinear readiness, policy proposal y confirmation policy activa en un flujo operacional claro.
 
-## Execution Reconciliation / Order Execution State v1
+Diferido / no prioritario:
 
-Estado: implementado en version minima
+- Gobierno distribuido o dependiente de base de datos.
+- Flujos de aprobación complejos antes de que el producto los necesite.
+
+## 5. Runtime, Eventos y Persistencia
+
+Estado: implementado como runtime offline modular.
 
 Incluye:
 
-- derivacion query-only de execution state por `order_id`
-- resumen minimo con `ordered_quantity`, `filled_quantity`, `remaining_quantity`, `average_fill_price` y `fill_count`
-- distincion entre `submitted_without_fills`, `partially_filled`, `fully_filled`, `overfilled`, `target_quantity_unknown` e `inconsistent`
-- integracion visible en `inspect order`
+- CLI Rust para inspección y ejecución de flujos offline.
+- Modularización de parser, dispatch y renderers.
+- Persistencia JSONL append-only.
+- Proyecciones y consultas en memoria.
+- Inspección de `signal`, `decision`, `order` y `fill`.
+- Reportes texto y JSON.
+- Batch runner básico para encadenar ingestión, materialización y resumen.
 
 Pendiente siguiente:
 
-- hacer contractual la cantidad objetivo de la `order`
-- reconciliacion mas rica sin introducir todavia broker semantics
+- Un comando único `run-paper-pipeline` que ejecute el flujo paper completo de forma reproducible.
+- Mantener la CLI como superficie clara para pruebas, demos y operación manual.
+- Evitar que el runtime se convierta prematuramente en daemon.
 
-## Batch Runner v1
+Diferido / no prioritario:
 
-Estado: implementado en version minima
+- Base de datos.
+- Scheduler always-on.
+- Rediseño amplio del event model.
+
+## 6. Decisiones, Órdenes y Observación de Ejecución
+
+Estado: implementado en versión mínima y canónica.
 
 Incluye:
 
-- comando runtime `run batch`
-- encadenado manual y reproducible de:
-  - `ingest research-signals`
-  - `materialize decisions`
-  - `summary`
-- `dry-run`
-- report consolidado por fases
-- errores que identifican claramente la fase fallida
+- Materialización prudente de `decision.formed`.
+- Materialización de `order.registered`.
+- Persistencia de `order.submitted`.
+- Observación canónica de `fill.received`.
+- Detección de duplicados por idempotency key.
+- Boundaries y readiness para decisiones, órdenes y fills.
+- Resumen de ejecución por orden.
 
 Pendiente siguiente:
 
-- decidir si el batch runner merece perfiles o filtros adicionales
-- mantenerlo batch/manual sin convertirlo todavia en scheduler o daemon
+- Hacer más explícita la cantidad objetivo de una orden cuando sea necesario.
+- Mejorar reconciliación de fills y estados parciales sin introducir broker semantics prematuras.
+
+Diferido / no prioritario:
+
+- Accepted/rejected de venues reales.
+- Gateway live.
+- Semántica completa de broker o exchange.
+
+## 7. Paper Execution y Adapter de Polymarket
+
+Estado: prototipo implementado y subordinado a 2EXCAMIM.
+
+Incluye:
+
+- Adapter mínimo hacia `polymarket-paper-trader`.
+- Boundary estrecho por CLI / fixture, sin importar internals Python en Rust.
+- `PaperExecutionRequest`.
+- Mapeo de trade/fill backend a resultado canónico.
+- Persistencia de `fill.received` por la ruta canónica.
+- Fixture mode para tests deterministas.
+- Deduplicación de importaciones repetidas del mismo backend trade.
+
+Pendiente siguiente:
+
+- Mantener el adapter reemplazable.
+- Aumentar cobertura de fixtures para casos parciales o inconsistentes.
+- Definir mejor qué campos de backend son contractuales y cuáles son solo observación.
+
+Diferido / no prioritario:
+
+- Usar `polymarket-paper-trader` como sistema core.
+- Multi-account orchestration.
+- Dependencia fuerte de schema interno del backend.
+
+## 8. Paper Decision Runner
+
+Estado: implementado como primer loop paper end-to-end.
+
+Incluye:
+
+- Carga de señales confirmadas elegibles.
+- Skip de señales ya ejecutadas.
+- Mapeo simple de señal confirmada a paper order.
+- Persistencia de `order.registered` y `order.submitted`.
+- Llamada al adapter paper.
+- Persistencia de `fill.received`.
+- Reporte con señales vistas, requests enviados, fills persistidos, duplicados y skips.
+
+Pendiente siguiente:
+
+- Crear `run-paper-pipeline` como comando operativo único que agrupe confirmación, decisión paper, riesgo, ejecución fixture/backend y ledger.
+- Mejorar reglas de sizing y filtros sin convertirlo en motor live.
+- Mantener idempotencia y reproducibilidad como requisitos centrales.
+
+Diferido / no prioritario:
+
+- Ejecución live.
+- Orquestación multi-cuenta.
+- Scheduler continuo.
+
+## 9. Paper Ledger y Riesgo
+
+Estado: implementado en primera versión.
+
+Incluye:
+
+- Proyección canónica de paper ledger desde eventos.
+- Vistas de órdenes, fills y posiciones abiertas.
+- Exposición por mercado y outcome.
+- Spend / proceeds acumulados cuando son derivables.
+- CLI `show-paper-ledger`.
+- `PaperRiskGuard` antes de ejecución paper.
+- Límites configurables:
+  - máximo de posiciones abiertas
+  - exposición nocional total
+  - exposición por mercado
+  - máximo de órdenes por mercado
+  - bloqueo opcional de duplicado mismo mercado / mismo outcome
+- Reporte de bloqueos por razón.
+
+Pendiente siguiente:
+
+- Enriquecer ciclo de vida de posiciones paper.
+- Proyección de PnL realizada y no realizada.
+- Cierres parciales y completos más claros.
+- Métricas de exposición útiles para intervención humana.
+
+Diferido / no prioritario:
+
+- Risk engine institucional.
+- Margen, liquidación o collateral real.
+- Dependencia del backend como source of truth.
+
+## 10. Dashboard / Control Room v1
+
+Estado: siguiente frente importante, no implementado aún.
+
+Rationale:
+
+2EXCAMIM ya puede generar, confirmar, gobernar y ejecutar en paper de forma mínima. El siguiente salto de utilidad no es más automatización, sino visibilidad operacional. Un fundador o operador debe poder entender rápidamente qué está haciendo el sistema, qué está bloqueado, qué está en paper, qué familias están promovidas o congeladas y dónde hay riesgo acumulado.
+
+Incluye esperado:
+
+- Vista de estado del sistema:
+  - señales generadas
+  - señales confirmadas
+  - familias por readiness
+  - decisiones paper recientes
+  - fills paper recientes
+  - posiciones abiertas
+  - exposición por mercado y outcome
+- Panel de riesgo:
+  - límites activos
+  - bloqueos recientes
+  - razones de bloqueo
+  - mercados con mayor exposición
+- Panel de investigación:
+  - advisory por familia
+  - resultados walk-forward
+  - políticas propuestas vs política activa
+- Panel de operación:
+  - últimos comandos o runs
+  - conteos por fase
+  - errores accionables
+
+Pendiente siguiente:
+
+- Definir si la primera versión será estática, CLI-rendered, o una UI local simple.
+- Priorizar lectura y control humano sobre automatización.
+- Mantener el dashboard como consumidor de eventos/proyecciones, no como nuevo source of truth.
+
+Diferido / no prioritario:
+
+- Trading controls live.
+- Edición compleja de políticas desde UI.
+- Multiusuario, permisos o deployment cloud.
+
+## 11. Live Gateway / Ejecución Real
+
+Estado: intencionalmente diferido.
+
+Incluye hoy:
+
+- Nada live.
+- Solo paper execution controlada y observable.
+
+Pendiente siguiente:
+
+- Considerar live gateway solo si el paper loop demuestra estabilidad, trazabilidad y valor.
+- Antes de live, exigir:
+  - readiness confiable
+  - ledger paper robusto
+  - PnL y reconciliación suficientes
+  - dashboard operativo
+  - límites de riesgo claros
+  - revisión humana explícita
+
+Diferido / no prioritario:
+
+- Trading real.
+- Gateway de ejecución live.
+- Scheduler always-on.
+- MCP como boundary productivo.
+- Broad backend coupling.
+- Multi-account orchestration.
+
+## Prioridades Actuales
+
+Estado: activo.
+
+Pendiente siguiente:
+
+1. Implementar `run-paper-pipeline` como flujo end-to-end reproducible.
+2. Enriquecer paper ledger con ciclo de vida de posiciones y PnL.
+3. Diseñar Dashboard / Control Room v1 como capa de observabilidad humana.
+4. Evaluar live gateway solo después de que paper execution y control room sean confiables.
+
+Diferido / no prioritario:
+
+- Acelerar hacia live trading antes de que el sistema sea observable y gobernable.
+- Convertir prototipos de backend en dependencias centrales.
+- Ampliar infraestructura antes de que el flujo paper sea claro.

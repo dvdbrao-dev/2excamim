@@ -1,12 +1,21 @@
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     agents::ConfirmationPolicyLoadError,
     batch_runner::BatchRunnerError,
+    codecs::CodecError,
+    dashboard::DashboardError,
+    execution::{
+        PaperDecisionRunnerError, PaperExecutionRequest, PaperRiskGuardConfig,
+        PolymarketPaperAdapterError,
+    },
     handoff::HandoffError,
     materialization::{FillObservationRequest, MaterializationError},
     observability::ObservabilityError,
+    operations::{OperationalSummaryError, OperationalSummaryFormat},
     queries::QueryError,
     store::StoreError,
 };
@@ -18,6 +27,12 @@ mod text_renderer;
 
 pub(crate) const DEFAULT_STORE_PATH: &str = "./var/events.jsonl";
 pub(crate) const DEFAULT_SNAPSHOTS_PATH: &str = "./var/market_snapshots.jsonl";
+pub(crate) const DEFAULT_READINESS_PATH: &str = "./var/readiness/confirmation_readiness.json";
+pub(crate) const DEFAULT_DASHBOARD_PATH: &str = "./var/dashboard/control_room.html";
+pub(crate) const DEFAULT_OPERATIONAL_SUMMARY_JSON_PATH: &str =
+    "./var/operations/latest_summary.json";
+pub(crate) const DEFAULT_OPERATIONAL_SUMMARY_MARKDOWN_PATH: &str =
+    "./var/operations/latest_summary.md";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OutputFormat {
@@ -28,24 +43,55 @@ pub(crate) enum OutputFormat {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Command {
     Summary,
-    Signal { signal_id: String },
-    Decision { decision_id: String },
-    Order { order_id: String },
-    Fill { fill_id: String },
-    ObserveFill { request: FillObservationRequest },
-    PolicySignal { signal_id: String },
-    PolicyDecision { decision_id: String },
-    PolicyOrder { order_id: String },
-    IngestResearchSignals { input_path: PathBuf },
+    Signal {
+        signal_id: String,
+    },
+    Decision {
+        decision_id: String,
+    },
+    Order {
+        order_id: String,
+    },
+    Fill {
+        fill_id: String,
+    },
+    ObserveFill {
+        request: FillObservationRequest,
+    },
+    PolicySignal {
+        signal_id: String,
+    },
+    PolicyDecision {
+        decision_id: String,
+    },
+    PolicyOrder {
+        order_id: String,
+    },
+    IngestResearchSignals {
+        input_path: PathBuf,
+    },
     ConfirmSignals,
     MeasureConfirmationOutcomes,
     EvaluateConfirmationPolicy,
     WalkForwardConfirmationPolicy,
     ProposeConfirmationPolicy,
+    MaterializeConfirmationReadiness,
+    SimulatePaperFill {
+        request: PaperExecutionRequest,
+    },
+    RunPaperDecisions,
+    RunPaperPipeline {
+        research_signals_path: Option<PathBuf>,
+    },
+    ServeDashboard,
+    GenerateOperationalSummary,
+    ShowPaperLedger,
     MaterializeDecisions,
     MaterializeOrders,
     SubmitOrders,
-    RunBatch { research_signals_path: PathBuf },
+    RunBatch {
+        research_signals_path: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,6 +109,29 @@ pub(crate) struct Config {
     pub(crate) window_size_seconds: Option<i64>,
     pub(crate) policy_file: Option<PathBuf>,
     pub(crate) output_path: Option<PathBuf>,
+    pub(crate) operational_summary_format: OperationalSummaryFormat,
+    pub(crate) backend_trades_json: Option<PathBuf>,
+    pub(crate) materialize_readiness: bool,
+    pub(crate) usd_size: f64,
+    pub(crate) backend_account: String,
+    pub(crate) backend_data_dir: PathBuf,
+    pub(crate) paper_risk: PaperRiskGuardConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PaperPipelineReport {
+    pub dry_run: bool,
+    pub stages: Vec<String>,
+    pub signals_seen: usize,
+    pub signals_generated: usize,
+    pub signals_confirmed: usize,
+    pub execution_requests_sent: usize,
+    pub fills_persisted: usize,
+    pub blocked_by_risk: usize,
+    pub open_positions: usize,
+    pub total_notional_spent: f64,
+    pub total_notional_received: f64,
+    pub readiness_states_materialized: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -77,10 +146,15 @@ pub(crate) enum RuntimeError {
     NotFound { entity: &'static str, id: String },
     Store(StoreError),
     Query(QueryError),
+    Codec(CodecError),
     Handoff(HandoffError),
     Materialization(MaterializationError),
     Batch(BatchRunnerError),
     Observability(ObservabilityError),
+    Execution(PolymarketPaperAdapterError),
+    PaperDecisionRunner(PaperDecisionRunnerError),
+    Dashboard(DashboardError),
+    OperationalSummary(OperationalSummaryError),
     Io(io::Error),
     Json(serde_json::Error),
 }
@@ -92,10 +166,15 @@ impl std::fmt::Display for RuntimeError {
             Self::NotFound { entity, id } => write!(f, "{entity} {id} not found in store"),
             Self::Store(error) => write!(f, "{error}"),
             Self::Query(error) => write!(f, "{error}"),
+            Self::Codec(error) => write!(f, "{error}"),
             Self::Handoff(error) => write!(f, "{error}"),
             Self::Materialization(error) => write!(f, "{error}"),
             Self::Batch(error) => write!(f, "{error}"),
             Self::Observability(error) => write!(f, "{error}"),
+            Self::Execution(error) => write!(f, "{error}"),
+            Self::PaperDecisionRunner(error) => write!(f, "{error}"),
+            Self::Dashboard(error) => write!(f, "{error}"),
+            Self::OperationalSummary(error) => write!(f, "{error}"),
             Self::Io(error) => write!(f, "{error}"),
             Self::Json(error) => write!(f, "{error}"),
         }
@@ -111,6 +190,12 @@ impl From<StoreError> for RuntimeError {
 impl From<QueryError> for RuntimeError {
     fn from(value: QueryError) -> Self {
         Self::Query(value)
+    }
+}
+
+impl From<CodecError> for RuntimeError {
+    fn from(value: CodecError) -> Self {
+        Self::Codec(value)
     }
 }
 
@@ -135,6 +220,30 @@ impl From<MaterializationError> for RuntimeError {
 impl From<BatchRunnerError> for RuntimeError {
     fn from(value: BatchRunnerError) -> Self {
         Self::Batch(value)
+    }
+}
+
+impl From<PolymarketPaperAdapterError> for RuntimeError {
+    fn from(value: PolymarketPaperAdapterError) -> Self {
+        Self::Execution(value)
+    }
+}
+
+impl From<PaperDecisionRunnerError> for RuntimeError {
+    fn from(value: PaperDecisionRunnerError) -> Self {
+        Self::PaperDecisionRunner(value)
+    }
+}
+
+impl From<DashboardError> for RuntimeError {
+    fn from(value: DashboardError) -> Self {
+        Self::Dashboard(value)
+    }
+}
+
+impl From<OperationalSummaryError> for RuntimeError {
+    fn from(value: OperationalSummaryError) -> Self {
+        Self::OperationalSummary(value)
     }
 }
 
@@ -200,10 +309,15 @@ pub(crate) fn exit_code_for_error(error: &RuntimeError) -> i32 {
         RuntimeError::NotFound { .. } => 3,
         RuntimeError::Store(_)
         | RuntimeError::Query(_)
+        | RuntimeError::Codec(_)
         | RuntimeError::Handoff(_)
         | RuntimeError::Materialization(_)
         | RuntimeError::Batch(_)
         | RuntimeError::Observability(_)
+        | RuntimeError::Execution(_)
+        | RuntimeError::PaperDecisionRunner(_)
+        | RuntimeError::Dashboard(_)
+        | RuntimeError::OperationalSummary(_)
         | RuntimeError::Io(_)
         | RuntimeError::Json(_) => 1,
     }

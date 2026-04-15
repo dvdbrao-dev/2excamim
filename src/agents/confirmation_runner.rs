@@ -50,6 +50,7 @@ pub struct ConfirmationRunner<'a> {
     store: &'a JsonlEventStore,
     agent: ConfirmationAgent,
     policy: Option<ConfirmationPolicy>,
+    dry_run: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,11 +65,17 @@ impl<'a> ConfirmationRunner<'a> {
             store,
             agent,
             policy: None,
+            dry_run: false,
         }
     }
 
     pub fn with_policy(mut self, policy: ConfirmationPolicy) -> Self {
         self.policy = Some(policy);
+        self
+    }
+
+    pub fn with_dry_run(mut self, dry_run: bool) -> Self {
+        self.dry_run = dry_run;
         self
     }
 
@@ -215,11 +222,17 @@ impl<'a> ConfirmationRunner<'a> {
                 Some(CoreEvent::SignalConfirmed(event)) => {
                     accepted += 1;
                     let stored = StoredEvent::try_from(&event)?;
-                    let was_persisted = self.store.append_event(&stored)?;
-                    if was_persisted {
-                        persisted += 1;
+                    let was_persisted = if self.dry_run {
+                        false
                     } else {
-                        duplicates += 1;
+                        self.store.append_event(&stored)?
+                    };
+                    if !self.dry_run {
+                        if was_persisted {
+                            persisted += 1;
+                        } else {
+                            duplicates += 1;
+                        }
                     }
                     emitted_events.push(stored);
                     items.push(ConfirmationRunItem {

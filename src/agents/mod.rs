@@ -7,6 +7,7 @@ pub mod confirmation_policy;
 pub mod confirmation_policy_advisory;
 pub mod confirmation_policy_proposal;
 pub mod confirmation_policy_sweep;
+pub mod confirmation_readiness;
 pub mod confirmation_runner;
 pub mod confirmation_scorecard;
 pub mod confirmation_walkforward;
@@ -42,6 +43,12 @@ pub use confirmation_policy_proposal::{
 };
 pub use confirmation_policy_sweep::{
     sweep_confirmation_policy, PolicySweepBreakdownRow, PolicySweepResultRow, PolicySweepSummary,
+};
+pub use confirmation_readiness::{
+    materialize_confirmation_readiness, read_confirmation_readiness_report, summarize_readiness,
+    write_confirmation_readiness_report, ConfirmationReadinessBreakdownRow,
+    ConfirmationReadinessConfig, ConfirmationReadinessEvidence, ConfirmationReadinessReport,
+    ConfirmationReadinessState, ConfirmationReadinessStatus, ConfirmationReadinessSummary,
 };
 pub use confirmation_runner::{
     ConfirmationDisposition, ConfirmationRunItem, ConfirmationRunReport, ConfirmationRunner,

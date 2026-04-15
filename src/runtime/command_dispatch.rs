@@ -3,15 +3,22 @@ use std::path::PathBuf;
 use crate::{
     agents::{
         advise_signal_families, compare_confirmation_quality, load_confirmed_signal_ids_from_store,
-        load_generated_signals_from_store, load_snapshots_jsonl, propose_confirmation_policy,
+        load_generated_signals_from_store, load_snapshots_jsonl,
+        materialize_confirmation_readiness, propose_confirmation_policy,
         run_confirmation_walkforward_from_store, sweep_confirmation_policy,
-        write_confirmation_policy_proposal, AdvisorySignalFamilyMetrics,
-        ConfirmationComparisonReport, ConfirmationEraSplit, ConfirmationPolicy,
-        ConfirmationPolicyAdvisory, ConfirmationPolicyAdvisoryConfig,
-        ConfirmationPolicyProposalConfig, ConfirmationRunner, ConfirmationScorecard,
-        ConfirmationWalkForwardConfig,
+        write_confirmation_policy_proposal, write_confirmation_readiness_report,
+        AdvisorySignalFamilyMetrics, ConfirmationComparisonReport, ConfirmationEraSplit,
+        ConfirmationPolicy, ConfirmationPolicyAdvisory, ConfirmationPolicyAdvisoryConfig,
+        ConfirmationPolicyProposalConfig, ConfirmationReadinessConfig, ConfirmationRunner,
+        ConfirmationScorecard, ConfirmationWalkForwardConfig,
     },
     batch_runner::{run_batch, BatchRunOptions},
+    dashboard::{write_dashboard, DashboardConfig},
+    execution::{
+        project_paper_ledger, run_paper_decisions, submit_paper_order_and_map_fill,
+        CliPolymarketPaperBackend, FixturePolymarketPaperBackend, PaperDecisionRunConfig,
+        PaperExecutionRequest,
+    },
     handoff::{ingest_research_signals_file, ResearchSignalIngestOptions},
     materialization::{
         materialize_decisions, materialize_orders, observe_fill, submit_orders,
@@ -19,12 +26,15 @@ use crate::{
         OrderMaterializationOptions, OrderSubmissionOptions,
     },
     observability::summary_from_store,
+    operations::{write_operational_summary, OperationalSummaryConfig, OperationalSummaryFormat},
     queries::QueryService,
     store::{JsonlEventStore, StoredEvent},
 };
 
 use super::{
-    cli_parser::usage, json_renderer, text_renderer, Command, Config, OutputFormat, RuntimeError,
+    cli_parser::usage, json_renderer, text_renderer, Command, Config, OutputFormat,
+    PaperPipelineReport, RuntimeError, DEFAULT_OPERATIONAL_SUMMARY_JSON_PATH,
+    DEFAULT_OPERATIONAL_SUMMARY_MARKDOWN_PATH, DEFAULT_READINESS_PATH,
 };
 
 pub(crate) fn execute(config: Config) -> Result<String, RuntimeError> {
@@ -36,11 +46,14 @@ pub(crate) fn execute(config: Config) -> Result<String, RuntimeError> {
                 | Command::MaterializeOrders
                 | Command::SubmitOrders
                 | Command::ObserveFill { .. }
+                | Command::SimulatePaperFill { .. }
+                | Command::RunPaperDecisions
+                | Command::RunPaperPipeline { .. }
                 | Command::RunBatch { .. }
         )
     {
         return Err(RuntimeError::Usage(
-            "--dry-run is only supported for ingest research-signals, materialize decisions, materialize orders, submit orders, observe fill and run batch"
+            "--dry-run is only supported for ingest research-signals, materialize decisions, materialize orders, submit orders, observe fill, simulate-paper-fill, run-paper-decisions, run-paper-pipeline and run batch"
                 .to_string(),
         ));
     }
@@ -80,6 +93,19 @@ pub(crate) fn execute(config: Config) -> Result<String, RuntimeError> {
             render_walkforward_confirmation_policy(&store, &config)
         }
         Command::ProposeConfirmationPolicy => render_propose_confirmation_policy(&store, &config),
+        Command::MaterializeConfirmationReadiness => {
+            render_materialize_confirmation_readiness(&store, &config)
+        }
+        Command::SimulatePaperFill { ref request } => {
+            render_simulate_paper_fill(&query_service, &config, request)
+        }
+        Command::RunPaperDecisions => render_run_paper_decisions(&query_service, &config),
+        Command::RunPaperPipeline {
+            ref research_signals_path,
+        } => render_run_paper_pipeline(&store, &query_service, &config, research_signals_path),
+        Command::ServeDashboard => render_serve_dashboard(&config),
+        Command::GenerateOperationalSummary => render_generate_operational_summary(&config),
+        Command::ShowPaperLedger => render_show_paper_ledger(&query_service, &config),
         Command::MaterializeDecisions => render_materialize_decisions(&query_service, &config),
         Command::MaterializeOrders => render_materialize_orders(&query_service, &config),
         Command::SubmitOrders => render_submit_orders(&query_service, &config),
@@ -93,12 +119,7 @@ fn render_confirm_signals(
     store: &JsonlEventStore,
     config: &Config,
 ) -> Result<String, RuntimeError> {
-    let runner = if let Some(policy_file) = &config.policy_file {
-        ConfirmationRunner::new(store, crate::ConfirmationAgent::new(Default::default()))
-            .with_policy(ConfirmationPolicy::from_file(policy_file)?)
-    } else {
-        ConfirmationRunner::new(store, crate::ConfirmationAgent::new(Default::default()))
-    };
+    let runner = confirmation_runner_from_config(store, config)?;
     let report = runner.run()?;
     let scorecard = ConfirmationScorecard::from_report(&report);
 
@@ -111,6 +132,19 @@ fn render_confirm_signals(
         OutputFormat::Json => Ok(serde_json::to_string_pretty(
             &json_renderer::confirmation_run(&report, &scorecard, &config.store_path),
         )?),
+    }
+}
+
+fn confirmation_runner_from_config<'a>(
+    store: &'a JsonlEventStore,
+    config: &Config,
+) -> Result<ConfirmationRunner<'a>, RuntimeError> {
+    let runner = ConfirmationRunner::new(store, crate::ConfirmationAgent::new(Default::default()))
+        .with_dry_run(config.dry_run);
+    if let Some(policy_file) = &config.policy_file {
+        Ok(runner.with_policy(ConfirmationPolicy::from_file(policy_file)?))
+    } else {
+        Ok(runner)
     }
 }
 
@@ -196,30 +230,7 @@ fn render_walkforward_confirmation_policy(
     store: &JsonlEventStore,
     config: &Config,
 ) -> Result<String, RuntimeError> {
-    if config.window_size_seconds.is_some() && config.eras != 3 {
-        return Err(RuntimeError::Usage(format!(
-            "use either --eras or --window-size for walkforward-confirmation-policy\n\n{}",
-            usage()
-        )));
-    }
-    if config.eras == 0 {
-        return Err(RuntimeError::Usage(format!(
-            "--eras must be greater than zero\n\n{}",
-            usage()
-        )));
-    }
-    if config.window_size_seconds.is_some_and(|value| value <= 0) {
-        return Err(RuntimeError::Usage(format!(
-            "--window-size must be greater than zero\n\n{}",
-            usage()
-        )));
-    }
-
-    let era_split = if let Some(window_size_seconds) = config.window_size_seconds {
-        ConfirmationEraSplit::WindowSizeSeconds(window_size_seconds)
-    } else {
-        ConfirmationEraSplit::EraCount(config.eras)
-    };
+    let era_split = era_split_from_config(config, "walkforward-confirmation-policy")?;
     let report = run_confirmation_walkforward_from_store(
         store,
         &config.snapshots_path,
@@ -252,30 +263,7 @@ fn render_propose_confirmation_policy(
     store: &JsonlEventStore,
     config: &Config,
 ) -> Result<String, RuntimeError> {
-    if config.window_size_seconds.is_some() && config.eras != 3 {
-        return Err(RuntimeError::Usage(format!(
-            "use either --eras or --window-size for propose-confirmation-policy\n\n{}",
-            usage()
-        )));
-    }
-    if config.eras == 0 {
-        return Err(RuntimeError::Usage(format!(
-            "--eras must be greater than zero\n\n{}",
-            usage()
-        )));
-    }
-    if config.window_size_seconds.is_some_and(|value| value <= 0) {
-        return Err(RuntimeError::Usage(format!(
-            "--window-size must be greater than zero\n\n{}",
-            usage()
-        )));
-    }
-
-    let era_split = if let Some(window_size_seconds) = config.window_size_seconds {
-        ConfirmationEraSplit::WindowSizeSeconds(window_size_seconds)
-    } else {
-        ConfirmationEraSplit::EraCount(config.eras)
-    };
+    let era_split = era_split_from_config(config, "propose-confirmation-policy")?;
     let walkforward = run_confirmation_walkforward_from_store(
         store,
         &config.snapshots_path,
@@ -314,6 +302,443 @@ fn render_propose_confirmation_policy(
             &json_renderer::propose_confirmation_policy(&proposal, &config.output_path),
         )?),
     }
+}
+
+fn render_materialize_confirmation_readiness(
+    store: &JsonlEventStore,
+    config: &Config,
+) -> Result<String, RuntimeError> {
+    let era_split = era_split_from_config(config, "materialize-confirmation-readiness")?;
+    let generated = load_generated_signals_from_store(store)?;
+    let walkforward = run_confirmation_walkforward_from_store(
+        store,
+        &config.snapshots_path,
+        &ConfirmationWalkForwardConfig {
+            era_split,
+            confidence_thresholds: config.confidence_thresholds.clone(),
+            horizons: config.horizons.clone(),
+            delta_threshold: config.delta_threshold,
+            advisory_config: ConfirmationPolicyAdvisoryConfig::default(),
+        },
+    )?;
+    let source_analysis = format!(
+        "materialize-confirmation-readiness --eras={} --window_size_seconds={} --confidence_thresholds={:?} --horizons={:?} --delta_threshold={}",
+        config.eras,
+        config.window_size_seconds.unwrap_or_default(),
+        config.confidence_thresholds,
+        config.horizons,
+        config.delta_threshold
+    );
+    let proposal = propose_confirmation_policy(
+        &walkforward,
+        &source_analysis,
+        &ConfirmationPolicyProposalConfig::default(),
+    );
+    let readiness = materialize_confirmation_readiness(
+        &walkforward,
+        &generated,
+        Some(&proposal),
+        &source_analysis,
+        &ConfirmationReadinessConfig::default(),
+    );
+    let output_path = config
+        .output_path
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_READINESS_PATH));
+    write_confirmation_readiness_report(&readiness, &output_path)?;
+
+    match config.format {
+        OutputFormat::Text => Ok(text_renderer::materialize_confirmation_readiness(
+            &readiness,
+            &config.store_path,
+            &config.snapshots_path,
+            &output_path,
+        )),
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(
+            &json_renderer::materialize_confirmation_readiness(
+                &readiness,
+                &config.store_path,
+                &config.snapshots_path,
+                &output_path,
+            ),
+        )?),
+    }
+}
+
+fn render_simulate_paper_fill(
+    query_service: &QueryService<'_>,
+    config: &Config,
+    request: &PaperExecutionRequest,
+) -> Result<String, RuntimeError> {
+    let import_report = if let Some(trades_path) = &config.backend_trades_json {
+        let backend = FixturePolymarketPaperBackend {
+            trades_path: trades_path.clone(),
+        };
+        submit_paper_order_and_map_fill(&backend, request, &Default::default())?
+    } else {
+        let backend = CliPolymarketPaperBackend::default();
+        submit_paper_order_and_map_fill(&backend, request, &Default::default())?
+    };
+
+    let observation_report = if let Some(fill_result) = &import_report.fill_result {
+        Some(observe_fill(
+            query_service,
+            &fill_result.to_fill_observation_request(),
+            FillObservationOptions {
+                dry_run: config.dry_run,
+            },
+        )?)
+    } else {
+        None
+    };
+
+    match config.format {
+        OutputFormat::Text => Ok(text_renderer::simulate_paper_fill(
+            &import_report,
+            observation_report.as_ref(),
+            &config.store_path,
+        )),
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(
+            &json_renderer::simulate_paper_fill(
+                &import_report,
+                observation_report.as_ref(),
+                &config.store_path,
+            ),
+        )?),
+    }
+}
+
+fn render_run_paper_decisions(
+    query_service: &QueryService<'_>,
+    config: &Config,
+) -> Result<String, RuntimeError> {
+    let run_config = PaperDecisionRunConfig {
+        usd_size: config.usd_size,
+        backend_account: config.backend_account.clone(),
+        backend_data_dir: config.backend_data_dir.clone(),
+        risk: config.paper_risk.clone(),
+        dry_run: config.dry_run,
+    };
+    let report = if let Some(trades_path) = &config.backend_trades_json {
+        let backend = FixturePolymarketPaperBackend {
+            trades_path: trades_path.clone(),
+        };
+        run_paper_decisions(query_service, &backend, &run_config)?
+    } else {
+        let backend = CliPolymarketPaperBackend::default();
+        run_paper_decisions(query_service, &backend, &run_config)?
+    };
+
+    match config.format {
+        OutputFormat::Text => Ok(text_renderer::run_paper_decisions(
+            &report,
+            &config.store_path,
+        )),
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(
+            &json_renderer::run_paper_decisions(&report, &config.store_path),
+        )?),
+    }
+}
+
+// This command is the operational base that a future Dashboard / Control Room v1
+// should summarize visually; it deliberately reuses the canonical runtime stages.
+fn render_run_paper_pipeline(
+    store: &JsonlEventStore,
+    query_service: &QueryService<'_>,
+    config: &Config,
+    research_signals_path: &Option<PathBuf>,
+) -> Result<String, RuntimeError> {
+    let mut stages = Vec::new();
+    let (signals_seen, signals_generated) =
+        if let Some(research_signals_path) = research_signals_path {
+            stages.push("ingest_research_signals".to_string());
+            let ingest = ingest_research_signals_file(
+                store,
+                research_signals_path,
+                ResearchSignalIngestOptions {
+                    dry_run: config.dry_run,
+                },
+            )?;
+            (ingest.rows_valid, ingest.events_written)
+        } else {
+            stages.push("load_existing_signals".to_string());
+            (load_generated_signals_from_store(store)?.len(), 0)
+        };
+
+    stages.push("confirm_signals".to_string());
+    let confirmation = confirmation_runner_from_config(store, config)?.run()?;
+
+    stages.push("run_paper_decisions".to_string());
+    let run_config = PaperDecisionRunConfig {
+        usd_size: config.usd_size,
+        backend_account: config.backend_account.clone(),
+        backend_data_dir: config.backend_data_dir.clone(),
+        risk: config.paper_risk.clone(),
+        dry_run: config.dry_run,
+    };
+    let decisions = if let Some(trades_path) = &config.backend_trades_json {
+        let backend = FixturePolymarketPaperBackend {
+            trades_path: trades_path.clone(),
+        };
+        run_paper_decisions(query_service, &backend, &run_config)?
+    } else {
+        let backend = CliPolymarketPaperBackend::default();
+        run_paper_decisions(query_service, &backend, &run_config)?
+    };
+
+    stages.push("project_paper_ledger".to_string());
+    let ledger = project_paper_ledger(&query_service.all_events()?)?;
+
+    let readiness_states_materialized = if config.materialize_readiness {
+        stages.push("materialize_confirmation_readiness".to_string());
+        let readiness = build_confirmation_readiness(store, config, "run-paper-pipeline")?;
+        if !config.dry_run {
+            let output_path = config
+                .output_path
+                .clone()
+                .unwrap_or_else(|| PathBuf::from(DEFAULT_READINESS_PATH));
+            write_confirmation_readiness_report(&readiness, &output_path)?;
+        }
+        Some(readiness.states.len())
+    } else {
+        None
+    };
+
+    let report = PaperPipelineReport {
+        dry_run: config.dry_run,
+        stages,
+        signals_seen,
+        signals_generated,
+        signals_confirmed: confirmation.persisted,
+        execution_requests_sent: decisions.execution_requests_sent,
+        fills_persisted: decisions.fills_persisted,
+        blocked_by_risk: decisions.blocked_by_risk,
+        open_positions: ledger.summary.open_positions,
+        total_notional_spent: ledger.summary.total_notional_spent,
+        total_notional_received: ledger.summary.total_notional_received,
+        readiness_states_materialized,
+    };
+    if !config.dry_run {
+        write_latest_pipeline_report(config, &report)?;
+        write_latest_operational_summary(config)?;
+    }
+
+    match config.format {
+        OutputFormat::Text => Ok(text_renderer::run_paper_pipeline(
+            &report,
+            &config.store_path,
+        )),
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(
+            &json_renderer::run_paper_pipeline(&report, &config.store_path),
+        )?),
+    }
+}
+
+fn render_serve_dashboard(config: &Config) -> Result<String, RuntimeError> {
+    let output_path = config
+        .output_path
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(super::DEFAULT_DASHBOARD_PATH));
+    let dashboard_config = DashboardConfig {
+        store_path: config.store_path.clone(),
+        readiness_path: PathBuf::from(DEFAULT_READINESS_PATH),
+        policy_path: config.policy_file.clone(),
+        pipeline_report_path: latest_pipeline_report_path(config),
+        output_path: output_path.clone(),
+    };
+    write_dashboard(&dashboard_config)?;
+
+    match config.format {
+        OutputFormat::Text => Ok(format!(
+            "Dashboard\noutput_path: {}\ndata_sources: events, paper ledger projection, readiness artifact if present, policy file if provided, latest pipeline report if present",
+            output_path.display()
+        )),
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "kind": "serve_dashboard",
+            "output_path": output_path.display().to_string(),
+            "data_sources": [
+                "events",
+                "paper_ledger_projection",
+                "readiness_artifact",
+                "policy_file",
+                "latest_pipeline_report"
+            ]
+        }))?),
+    }
+}
+
+fn render_generate_operational_summary(config: &Config) -> Result<String, RuntimeError> {
+    let output_path = config
+        .output_path
+        .clone()
+        .unwrap_or_else(|| default_operational_summary_path(config.operational_summary_format));
+    let summary_config = OperationalSummaryConfig {
+        store_path: config.store_path.clone(),
+        readiness_path: PathBuf::from(DEFAULT_READINESS_PATH),
+        policy_path: config.policy_file.clone(),
+        pipeline_report_path: latest_pipeline_report_path(config),
+        output_path: output_path.clone(),
+        format: config.operational_summary_format,
+    };
+    write_operational_summary(&summary_config)?;
+
+    match config.format {
+        OutputFormat::Text => Ok(format!(
+            "Operational Summary\noutput_path: {}\nformat: {}\ndata_sources: latest pipeline report if present, canonical paper ledger projection, readiness artifact if present, policy file if provided",
+            output_path.display(),
+            config.operational_summary_format.as_str()
+        )),
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "kind": "generate_operational_summary",
+            "output_path": output_path.display().to_string(),
+            "format": config.operational_summary_format.as_str(),
+            "data_sources": [
+                "latest_pipeline_report",
+                "paper_ledger_projection",
+                "readiness_artifact",
+                "policy_file"
+            ]
+        }))?),
+    }
+}
+
+fn write_latest_pipeline_report(
+    config: &Config,
+    report: &PaperPipelineReport,
+) -> Result<(), RuntimeError> {
+    let path = latest_pipeline_report_path(config);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let file = std::fs::File::create(path)?;
+    serde_json::to_writer_pretty(file, report)?;
+    Ok(())
+}
+
+fn latest_pipeline_report_path(config: &Config) -> PathBuf {
+    config
+        .store_path
+        .parent()
+        .map(|parent| parent.join("dashboard/latest_pipeline.json"))
+        .unwrap_or_else(|| PathBuf::from("./var/dashboard/latest_pipeline.json"))
+}
+
+fn write_latest_operational_summary(config: &Config) -> Result<(), RuntimeError> {
+    let summary_config = OperationalSummaryConfig {
+        store_path: config.store_path.clone(),
+        readiness_path: PathBuf::from(DEFAULT_READINESS_PATH),
+        policy_path: config.policy_file.clone(),
+        pipeline_report_path: latest_pipeline_report_path(config),
+        output_path: latest_operational_summary_path(config),
+        format: OperationalSummaryFormat::Json,
+    };
+    write_operational_summary(&summary_config)?;
+    Ok(())
+}
+
+fn latest_operational_summary_path(config: &Config) -> PathBuf {
+    config
+        .store_path
+        .parent()
+        .map(|parent| parent.join("operations/latest_summary.json"))
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_OPERATIONAL_SUMMARY_JSON_PATH))
+}
+
+fn default_operational_summary_path(format: OperationalSummaryFormat) -> PathBuf {
+    PathBuf::from(match format {
+        OperationalSummaryFormat::Json => DEFAULT_OPERATIONAL_SUMMARY_JSON_PATH,
+        OperationalSummaryFormat::Markdown => DEFAULT_OPERATIONAL_SUMMARY_MARKDOWN_PATH,
+    })
+}
+
+fn render_show_paper_ledger(
+    query_service: &QueryService<'_>,
+    config: &Config,
+) -> Result<String, RuntimeError> {
+    let events = query_service.all_events()?;
+    let ledger = project_paper_ledger(&events)?;
+
+    match config.format {
+        OutputFormat::Text => Ok(text_renderer::show_paper_ledger(
+            &ledger,
+            &config.store_path,
+        )),
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(
+            &json_renderer::show_paper_ledger(&ledger, &config.store_path),
+        )?),
+    }
+}
+
+fn build_confirmation_readiness(
+    store: &JsonlEventStore,
+    config: &Config,
+    command_name: &str,
+) -> Result<crate::ConfirmationReadinessReport, RuntimeError> {
+    let era_split = era_split_from_config(config, command_name)?;
+    let generated = load_generated_signals_from_store(store)?;
+    let walkforward = run_confirmation_walkforward_from_store(
+        store,
+        &config.snapshots_path,
+        &ConfirmationWalkForwardConfig {
+            era_split,
+            confidence_thresholds: config.confidence_thresholds.clone(),
+            horizons: config.horizons.clone(),
+            delta_threshold: config.delta_threshold,
+            advisory_config: ConfirmationPolicyAdvisoryConfig::default(),
+        },
+    )?;
+    let source_analysis = format!(
+        "{command_name} --eras={} --window_size_seconds={} --confidence_thresholds={:?} --horizons={:?} --delta_threshold={}",
+        config.eras,
+        config.window_size_seconds.unwrap_or_default(),
+        config.confidence_thresholds,
+        config.horizons,
+        config.delta_threshold
+    );
+    let proposal = propose_confirmation_policy(
+        &walkforward,
+        &source_analysis,
+        &ConfirmationPolicyProposalConfig::default(),
+    );
+    Ok(materialize_confirmation_readiness(
+        &walkforward,
+        &generated,
+        Some(&proposal),
+        &source_analysis,
+        &ConfirmationReadinessConfig::default(),
+    ))
+}
+
+fn era_split_from_config(
+    config: &Config,
+    command_name: &str,
+) -> Result<ConfirmationEraSplit, RuntimeError> {
+    if config.window_size_seconds.is_some() && config.eras != 3 {
+        return Err(RuntimeError::Usage(format!(
+            "use either --eras or --window-size for {command_name}\n\n{}",
+            usage()
+        )));
+    }
+    if config.eras == 0 {
+        return Err(RuntimeError::Usage(format!(
+            "--eras must be greater than zero\n\n{}",
+            usage()
+        )));
+    }
+    if config.window_size_seconds.is_some_and(|value| value <= 0) {
+        return Err(RuntimeError::Usage(format!(
+            "--window-size must be greater than zero\n\n{}",
+            usage()
+        )));
+    }
+
+    Ok(
+        if let Some(window_size_seconds) = config.window_size_seconds {
+            ConfirmationEraSplit::WindowSizeSeconds(window_size_seconds)
+        } else {
+            ConfirmationEraSplit::EraCount(config.eras)
+        },
+    )
 }
 
 fn render_batch_run(
@@ -746,6 +1171,7 @@ fn build_policy_advisory(
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::execute;
@@ -773,6 +1199,13 @@ mod tests {
             window_size_seconds: None,
             policy_file: None,
             output_path: None,
+            operational_summary_format: crate::OperationalSummaryFormat::Json,
+            backend_trades_json: None,
+            materialize_readiness: false,
+            usd_size: 100.0,
+            backend_account: "default".into(),
+            backend_data_dir: PathBuf::from(crate::DEFAULT_POLYMARKET_PAPER_DATA_DIR),
+            paper_risk: Default::default(),
         })
         .unwrap();
 

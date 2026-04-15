@@ -5,7 +5,8 @@ use chrono::{DateTime, Utc};
 use crate::events::FillSide;
 
 use super::{
-    Command, Config, ParseOutcome, RuntimeError, DEFAULT_SNAPSHOTS_PATH, DEFAULT_STORE_PATH,
+    Command, Config, ParseOutcome, RuntimeError, DEFAULT_DASHBOARD_PATH, DEFAULT_SNAPSHOTS_PATH,
+    DEFAULT_STORE_PATH,
 };
 
 pub(crate) fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError> {
@@ -25,6 +26,20 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError
     let mut window_size_seconds = None;
     let mut policy_file = None;
     let mut output_path = None;
+    let mut operational_summary_format = crate::OperationalSummaryFormat::Json;
+    let mut backend_trades_json = None;
+    let mut materialize_readiness = false;
+    let mut market_slug = None;
+    let mut outcome = None;
+    let mut amount_usd = None;
+    let mut usd_size = 100.0_f64;
+    let mut backend_account = Some("default".to_string());
+    let mut backend_data_dir = PathBuf::from(crate::execution::DEFAULT_POLYMARKET_PAPER_DATA_DIR);
+    let mut max_open_positions = None;
+    let mut max_total_notional_exposure = None;
+    let mut max_exposure_per_market = None;
+    let mut max_orders_per_market = None;
+    let mut block_same_market_same_outcome_if_open = false;
     let mut fill_id = None;
     let mut order_id = None;
     let mut decision_id = None;
@@ -112,6 +127,62 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError
             }
             "--output" => {
                 output_path = Some(PathBuf::from(required_flag_value(&mut args, "--output")?));
+            }
+            "--format" => {
+                operational_summary_format =
+                    parse_operational_summary_format(&required_flag_value(&mut args, "--format")?)?;
+            }
+            "--backend-trades-json" => {
+                backend_trades_json = Some(PathBuf::from(required_flag_value(
+                    &mut args,
+                    "--backend-trades-json",
+                )?));
+            }
+            "--materialize-readiness" => {
+                materialize_readiness = true;
+            }
+            "--market" | "--market-slug" => {
+                market_slug = Some(required_flag_value(&mut args, "--market")?);
+            }
+            "--outcome" => outcome = Some(required_flag_value(&mut args, "--outcome")?),
+            "--amount-usd" => amount_usd = Some(required_flag_value(&mut args, "--amount-usd")?),
+            "--usd-size" => {
+                usd_size =
+                    parse_f64_flag(&required_flag_value(&mut args, "--usd-size")?, "--usd-size")?;
+            }
+            "--backend-account" => {
+                backend_account = Some(required_flag_value(&mut args, "--backend-account")?);
+            }
+            "--backend-data-dir" => {
+                backend_data_dir =
+                    PathBuf::from(required_flag_value(&mut args, "--backend-data-dir")?);
+            }
+            "--max-open-positions" => {
+                max_open_positions = Some(parse_usize_flag(
+                    &required_flag_value(&mut args, "--max-open-positions")?,
+                    "--max-open-positions",
+                )?);
+            }
+            "--max-total-notional-exposure" => {
+                max_total_notional_exposure = Some(parse_f64_flag(
+                    &required_flag_value(&mut args, "--max-total-notional-exposure")?,
+                    "--max-total-notional-exposure",
+                )?);
+            }
+            "--max-exposure-per-market" => {
+                max_exposure_per_market = Some(parse_f64_flag(
+                    &required_flag_value(&mut args, "--max-exposure-per-market")?,
+                    "--max-exposure-per-market",
+                )?);
+            }
+            "--max-orders-per-market" => {
+                max_orders_per_market = Some(parse_usize_flag(
+                    &required_flag_value(&mut args, "--max-orders-per-market")?,
+                    "--max-orders-per-market",
+                )?);
+            }
+            "--block-same-market-same-outcome-if-open" => {
+                block_same_market_same_outcome_if_open = true;
             }
             "--dry-run" => {
                 dry_run = true;
@@ -218,6 +289,36 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError
             Command::WalkForwardConfirmationPolicy
         }
         [single] if single == "propose-confirmation-policy" => Command::ProposeConfirmationPolicy,
+        [single] if single == "materialize-confirmation-readiness" => {
+            Command::MaterializeConfirmationReadiness
+        }
+        [single] if single == "simulate-paper-fill" => Command::SimulatePaperFill {
+            request: crate::execution::PaperExecutionRequest {
+                order_id: required_value(order_id, "--order-id")?,
+                decision_id: required_value(decision_id, "--decision-id")?,
+                market_slug: required_value(market_slug, "--market")?,
+                outcome: required_value(outcome, "--outcome")?,
+                side: parse_fill_side(&required_value(side, "--side")?)?,
+                amount_usd: parse_f64_flag(
+                    &required_value(amount_usd, "--amount-usd")?,
+                    "--amount-usd",
+                )?,
+                backend_account: required_value(backend_account.clone(), "--backend-account")?,
+                backend_data_dir: backend_data_dir.clone(),
+            },
+        },
+        [single] if single == "run-paper-decisions" => Command::RunPaperDecisions,
+        [single] if single == "run-paper-pipeline" => Command::RunPaperPipeline {
+            research_signals_path: None,
+        },
+        [single, flag, path] if single == "run-paper-pipeline" && flag == "--research-signals" => {
+            Command::RunPaperPipeline {
+                research_signals_path: Some(PathBuf::from(path)),
+            }
+        }
+        [single] if single == "serve-dashboard" => Command::ServeDashboard,
+        [single] if single == "generate-operational-summary" => Command::GenerateOperationalSummary,
+        [single] if single == "show-paper-ledger" => Command::ShowPaperLedger,
         [materialize, entity] if materialize == "materialize" && entity == "decisions" => {
             Command::MaterializeDecisions
         }
@@ -240,6 +341,23 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError
         }
     };
 
+    let output_path = output_path.or_else(|| {
+        if matches!(command, Command::ServeDashboard) {
+            Some(PathBuf::from(DEFAULT_DASHBOARD_PATH))
+        } else if matches!(command, Command::GenerateOperationalSummary) {
+            Some(PathBuf::from(match operational_summary_format {
+                crate::OperationalSummaryFormat::Json => {
+                    super::DEFAULT_OPERATIONAL_SUMMARY_JSON_PATH
+                }
+                crate::OperationalSummaryFormat::Markdown => {
+                    super::DEFAULT_OPERATIONAL_SUMMARY_MARKDOWN_PATH
+                }
+            }))
+        } else {
+            None
+        }
+    });
+
     Ok(ParseOutcome::Config(Config {
         command,
         store_path,
@@ -254,12 +372,28 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError
         window_size_seconds,
         policy_file,
         output_path,
+        operational_summary_format,
+        backend_trades_json,
+        materialize_readiness,
+        usd_size,
+        backend_account: required_value(backend_account, "--backend-account")?,
+        backend_data_dir,
+        paper_risk: crate::PaperRiskGuardConfig {
+            max_open_positions,
+            max_total_notional_exposure,
+            max_exposure_per_market,
+            max_orders_per_market,
+            block_same_market_same_outcome_if_open,
+        },
     }))
 }
 
 pub(crate) fn usage() -> String {
+    let base = format!(
+        "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim confirm signals [--store PATH] [--policy-file PATH] [--json]\n  twoexcamim confirm-signals [--store PATH] [--policy-file PATH] [--json]\n  twoexcamim measure-confirmation-outcomes [--store PATH] [--snapshots PATH] [--horizon-seconds N] [--delta-threshold N] [--json]\n  twoexcamim evaluate-confirmation-policy [--store PATH] [--snapshots PATH] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--json]\n  twoexcamim walkforward-confirmation-policy [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--json]\n  twoexcamim propose-confirmation-policy [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--output PATH] [--json]\n  twoexcamim materialize-confirmation-readiness [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--output PATH] [--json]\n  twoexcamim simulate-paper-fill --order-id ID --decision-id ID --market SLUG --outcome OUTCOME --side <buy|sell> --amount-usd N [--backend-account NAME] [--backend-data-dir PATH] [--backend-trades-json PATH] [--store PATH] [--dry-run] [--json]\n  twoexcamim run-paper-decisions [--store PATH] [--backend-account NAME] [--backend-data-dir PATH] [--backend-trades-json PATH] [--usd-size N] [--max-open-positions N] [--max-total-notional-exposure N] [--max-exposure-per-market N] [--max-orders-per-market N] [--block-same-market-same-outcome-if-open] [--dry-run] [--json]\n  twoexcamim run-paper-pipeline [--research-signals PATH] [--store PATH] [--policy-file PATH] [--backend-account NAME] [--backend-data-dir PATH] [--backend-trades-json PATH] [--usd-size N] [--max-open-positions N] [--max-total-notional-exposure N] [--max-exposure-per-market N] [--max-orders-per-market N] [--block-same-market-same-outcome-if-open] [--materialize-readiness] [--dry-run] [--json]\n  twoexcamim generate-operational-summary [--store PATH] [--policy-file PATH] [--output PATH] [--format json|markdown] [--json]\n  twoexcamim show-paper-ledger [--store PATH] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize orders [--store PATH] [--dry-run] [--json]\n  twoexcamim submit orders [--store PATH] [--dry-run] [--json]\n  twoexcamim observe fill --fill-id ID --order-id ID --side <buy|sell> --quantity N --price N --executed-at RFC3339 [--decision-id ID] [--instrument VALUE] [--venue VALUE] [--store PATH] [--dry-run] [--json]\n  twoexcamim run batch --research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim confirm-signals --store ./var/events.jsonl --policy-file ./policies/confirmation_policy.json\n  twoexcamim measure-confirmation-outcomes --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --json\n  twoexcamim evaluate-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --horizons 3600,7200 --confidence-thresholds 0.5,0.6,0.7 --json\n  twoexcamim walkforward-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --horizons 3600,7200 --confidence-thresholds 0.5,0.6,0.7 --json\n  twoexcamim propose-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --confidence-thresholds 0.5,0.6,0.7 --output ./policies/proposed_confirmation_policy.json\n  twoexcamim materialize-confirmation-readiness --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --output ./var/readiness/confirmation_readiness.json\n  twoexcamim simulate-paper-fill --order-id ord-1 --decision-id dec-1 --market will-bitcoin-hit-100k --outcome yes --side buy --amount-usd 100 --backend-trades-json ./tests/fixtures/polymarket_trades.json --json\n  twoexcamim run-paper-decisions --store ./var/events.jsonl --backend-trades-json ./tests/fixtures/polymarket_trades.json --usd-size 100 --max-open-positions 5 --max-exposure-per-market 250 --json\n  twoexcamim run-paper-pipeline --store ./var/events.jsonl --backend-trades-json ./tests/fixtures/polymarket_trades.json --usd-size 100 --json\n  twoexcamim generate-operational-summary --store ./var/events.jsonl --output ./var/operations/latest_summary.md --format markdown\n  twoexcamim show-paper-ledger --store ./var/events.jsonl --json\n  twoexcamim materialize decisions --dry-run --json\n  twoexcamim materialize orders --dry-run --json\n  twoexcamim submit orders --dry-run --json\n  twoexcamim observe fill --fill-id fill-1 --order-id ord-1 --side buy --quantity 1 --price 0.54 --executed-at 2026-04-07T00:00:00Z --dry-run\n  twoexcamim run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run\n\nDefault store path: {DEFAULT_STORE_PATH}\nDefault snapshots path: {DEFAULT_SNAPSHOTS_PATH}"
+    );
     format!(
-        "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim confirm signals [--store PATH] [--policy-file PATH] [--json]\n  twoexcamim confirm-signals [--store PATH] [--policy-file PATH] [--json]\n  twoexcamim measure-confirmation-outcomes [--store PATH] [--snapshots PATH] [--horizon-seconds N] [--delta-threshold N] [--json]\n  twoexcamim evaluate-confirmation-policy [--store PATH] [--snapshots PATH] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--json]\n  twoexcamim walkforward-confirmation-policy [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--json]\n  twoexcamim propose-confirmation-policy [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--output PATH] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize orders [--store PATH] [--dry-run] [--json]\n  twoexcamim submit orders [--store PATH] [--dry-run] [--json]\n  twoexcamim observe fill --fill-id ID --order-id ID --side <buy|sell> --quantity N --price N --executed-at RFC3339 [--decision-id ID] [--instrument VALUE] [--venue VALUE] [--store PATH] [--dry-run] [--json]\n  twoexcamim run batch --research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim confirm-signals --store ./var/events.jsonl --policy-file ./policies/confirmation_policy.json\n  twoexcamim measure-confirmation-outcomes --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --json\n  twoexcamim evaluate-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --horizons 3600,7200 --confidence-thresholds 0.5,0.6,0.7 --json\n  twoexcamim walkforward-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --horizons 3600,7200 --confidence-thresholds 0.5,0.6,0.7 --json\n  twoexcamim propose-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --confidence-thresholds 0.5,0.6,0.7 --output ./policies/proposed_confirmation_policy.json\n  twoexcamim materialize decisions --dry-run --json\n  twoexcamim materialize orders --dry-run --json\n  twoexcamim submit orders --dry-run --json\n  twoexcamim observe fill --fill-id fill-1 --order-id ord-1 --side buy --quantity 1 --price 0.54 --executed-at 2026-04-07T00:00:00Z --dry-run\n  twoexcamim run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run\n\nDefault store path: {DEFAULT_STORE_PATH}\nDefault snapshots path: {DEFAULT_SNAPSHOTS_PATH}"
+        "{base}\n\nDashboard:\n  twoexcamim serve-dashboard [--store PATH] [--policy-file PATH] [--output PATH] [--json]\n\nDashboard example:\n  twoexcamim serve-dashboard --store ./var/events.jsonl --policy-file ./policies/confirmation_policy.json --output ./var/dashboard/control_room.html"
     )
 }
 
@@ -282,6 +416,28 @@ fn parse_f64_flag(value: &str, flag: &str) -> Result<f64, RuntimeError> {
             usage()
         ))
     })
+}
+
+fn parse_usize_flag(value: &str, flag: &str) -> Result<usize, RuntimeError> {
+    value.parse::<usize>().map_err(|_| {
+        RuntimeError::Usage(format!(
+            "invalid numeric value for {flag}: {value}\n\n{}",
+            usage()
+        ))
+    })
+}
+
+fn parse_operational_summary_format(
+    value: &str,
+) -> Result<crate::OperationalSummaryFormat, RuntimeError> {
+    match value.to_ascii_lowercase().as_str() {
+        "json" => Ok(crate::OperationalSummaryFormat::Json),
+        "markdown" | "md" => Ok(crate::OperationalSummaryFormat::Markdown),
+        _ => Err(RuntimeError::Usage(format!(
+            "invalid value for --format: {value}; expected json or markdown\n\n{}",
+            usage()
+        ))),
+    }
 }
 
 fn parse_csv_i64(value: &str, flag: &str) -> Result<Vec<i64>, RuntimeError> {
@@ -426,6 +582,33 @@ mod tests {
                 "policies/proposed_confirmation_policy.json"
             ))
         );
+    }
+
+    #[test]
+    fn parses_paper_risk_flags() {
+        let parsed = parse_args(vec![
+            "twoexcamim".into(),
+            "run-paper-decisions".into(),
+            "--max-open-positions".into(),
+            "3".into(),
+            "--max-total-notional-exposure".into(),
+            "500".into(),
+            "--max-exposure-per-market".into(),
+            "125".into(),
+            "--max-orders-per-market".into(),
+            "2".into(),
+            "--block-same-market-same-outcome-if-open".into(),
+        ])
+        .unwrap();
+        let ParseOutcome::Config(config) = parsed else {
+            panic!("expected config");
+        };
+        assert_eq!(config.command, Command::RunPaperDecisions);
+        assert_eq!(config.paper_risk.max_open_positions, Some(3));
+        assert_eq!(config.paper_risk.max_total_notional_exposure, Some(500.0));
+        assert_eq!(config.paper_risk.max_exposure_per_market, Some(125.0));
+        assert_eq!(config.paper_risk.max_orders_per_market, Some(2));
+        assert!(config.paper_risk.block_same_market_same_outcome_if_open);
     }
 
     #[test]

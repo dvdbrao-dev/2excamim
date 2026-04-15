@@ -23,12 +23,28 @@ fn cleanup(path: &Path) {
     let _ = std::fs::remove_file(path);
 }
 
+fn assert_close_json(value: &Value, expected: f64) {
+    let actual = value.as_f64().expect("expected numeric JSON value");
+    assert!(
+        (actual - expected).abs() < 0.00000001,
+        "expected {actual} to be close to {expected}"
+    );
+}
+
 fn temp_aux_path(name: &str, suffix: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
     std::env::temp_dir().join(format!("twoexcamim-runtime-cli-{name}-{nanos}.{suffix}"))
+}
+
+fn temp_dir_path(name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!("twoexcamim-runtime-cli-{name}-{nanos}"))
 }
 
 fn provenance() -> Provenance {
@@ -363,6 +379,12 @@ fn cli_help_returns_zero_and_shows_primary_verbs() {
     assert!(stdout.contains("evaluate-confirmation-policy"));
     assert!(stdout.contains("walkforward-confirmation-policy"));
     assert!(stdout.contains("propose-confirmation-policy"));
+    assert!(stdout.contains("materialize-confirmation-readiness"));
+    assert!(stdout.contains("simulate-paper-fill"));
+    assert!(stdout.contains("run-paper-decisions"));
+    assert!(stdout.contains("run-paper-pipeline"));
+    assert!(stdout.contains("serve-dashboard"));
+    assert!(stdout.contains("show-paper-ledger"));
     assert!(stdout.contains("materialize decisions"));
     assert!(stdout.contains("materialize orders"));
     assert!(stdout.contains("submit orders"));
@@ -780,6 +802,111 @@ fn cli_propose_confirmation_policy_json_exports_reviewable_policy() {
 }
 
 #[test]
+fn cli_materialize_confirmation_readiness_json_exports_reloadable_state() {
+    let path = temp_store_path("materialize-confirmation-readiness");
+    let snapshots_path = temp_aux_path("materialize-confirmation-readiness-snapshots", "jsonl");
+    let output_path = temp_aux_path("confirmation-readiness", "json");
+    let store = JsonlEventStore::new(&path).unwrap();
+    let base_time = chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 4, 13, 12, 0, 0).unwrap();
+
+    for (signal_id, market_id, minutes_after) in [
+        ("sig-1", "market-1", 0),
+        ("sig-2", "market-2", 1),
+        ("sig-3", "market-3", 2),
+        ("sig-4", "market-4", 120),
+        ("sig-5", "market-5", 121),
+        ("sig-6", "market-6", 122),
+        ("sig-7", "market-7", 240),
+        ("sig-8", "market-8", 241),
+        ("sig-9", "market-9", 242),
+    ] {
+        let mut generated = EventEnvelope::new_signal_generated(
+            "signal-engine",
+            Some(market_id.into()),
+            Linkage {
+                signal_id: Some(signal_id.into()),
+                ..signal_linkage()
+            },
+            provenance(),
+            SignalGenerated {
+                signal_id: signal_id.into(),
+                hypothesis_id: Some("hyp-1".into()),
+                instrument: market_id.into(),
+                timeframe: "odds_jump".into(),
+                side: SignalSide::Long,
+                strength: 0.9,
+                rationale: Some("readiness".into()),
+            },
+        )
+        .unwrap();
+        generated.occurred_at = base_time + chrono::Duration::minutes(minutes_after);
+        store.append_event(&stored_event(generated)).unwrap();
+    }
+
+    for (market_id, minutes_after, price) in [
+        ("market-1", 0, 0.40),
+        ("market-1", 60, 0.48),
+        ("market-2", 1, 0.40),
+        ("market-2", 61, 0.49),
+        ("market-3", 2, 0.40),
+        ("market-3", 62, 0.48),
+        ("market-4", 120, 0.40),
+        ("market-4", 180, 0.49),
+        ("market-5", 121, 0.40),
+        ("market-5", 181, 0.48),
+        ("market-6", 122, 0.40),
+        ("market-6", 182, 0.49),
+        ("market-7", 240, 0.40),
+        ("market-7", 300, 0.48),
+        ("market-8", 241, 0.40),
+        ("market-8", 301, 0.49),
+        ("market-9", 242, 0.40),
+        ("market-9", 302, 0.48),
+    ] {
+        write_snapshot_for_market(&snapshots_path, market_id, base_time, minutes_after, price);
+    }
+
+    let output = run_cli_raw(&[
+        "materialize-confirmation-readiness",
+        "--store",
+        path.to_str().unwrap(),
+        "--snapshots",
+        snapshots_path.to_str().unwrap(),
+        "--eras",
+        "3",
+        "--horizons",
+        "3600",
+        "--confidence-thresholds",
+        "0.5",
+        "--output",
+        output_path.to_str().unwrap(),
+        "--json",
+    ]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: Value = serde_json::from_str(&stdout).unwrap();
+    let exported = twoexcamim::read_confirmation_readiness_report(&output_path).unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(parsed["kind"], "materialize_confirmation_readiness");
+    assert_eq!(parsed["output_path"], output_path.display().to_string());
+    assert_eq!(parsed["readiness"]["summary"]["promoted"], 1);
+    assert_eq!(
+        parsed["readiness"]["states"][0]["readiness_status"],
+        "promoted"
+    );
+    assert_eq!(
+        parsed["readiness"]["states"][0]["evidence"]["proposed_policy_status"],
+        "promoted"
+    );
+    assert_eq!(exported.summary.promoted, 1);
+    assert_eq!(exported.states[0].signal_name, "odds_jump");
+
+    cleanup(&path);
+    cleanup(&snapshots_path);
+    cleanup(&output_path);
+}
+
+#[test]
 fn cli_confirm_signals_persists_confirmed_events_and_reports_summary() {
     let path = temp_store_path("confirm-signals");
     let store = JsonlEventStore::new(&path).unwrap();
@@ -1111,6 +1238,933 @@ fn cli_observe_fill_json_smoke_test() {
     assert_eq!(parsed["fill_id"], "fill-cli-1");
     assert_eq!(parsed["dry_run"], true);
     assert_eq!(parsed["disposition"], "Eligible");
+
+    cleanup(&path);
+}
+
+#[test]
+fn cli_simulate_paper_fill_maps_fixture_trade_to_canonical_fill_event() {
+    let path = temp_store_path("simulate-paper-fill");
+    let trades_path = temp_aux_path("polymarket-paper-trades", "json");
+    let store = JsonlEventStore::new(&path).unwrap();
+    store
+        .append_events(&[
+            stored_event(
+                EventEnvelope::new_order_registered(
+                    "execution-planner",
+                    Some("will-bitcoin-hit-100k".into()),
+                    order_linkage(),
+                    provenance(),
+                    OrderRegistered {
+                        order_id: "ord-1".into(),
+                        decision_id: Some("dec-1".into()),
+                        instrument: "will-bitcoin-hit-100k".into(),
+                        venue: "polymarket-paper".into(),
+                    },
+                )
+                .unwrap(),
+            ),
+            stored_event(
+                EventEnvelope::new_order_submitted(
+                    "execution-planner",
+                    Some("will-bitcoin-hit-100k".into()),
+                    order_linkage(),
+                    provenance(),
+                    OrderSubmitted {
+                        order_id: "ord-1".into(),
+                        decision_id: Some("dec-1".into()),
+                        instrument: "will-bitcoin-hit-100k".into(),
+                        venue: "polymarket-paper".into(),
+                    },
+                )
+                .unwrap(),
+            ),
+        ])
+        .unwrap();
+    std::fs::write(
+        &trades_path,
+        r#"{
+  "trades": [
+    {
+      "id": "trade-1",
+      "market": "will-bitcoin-hit-100k",
+      "outcome": "yes",
+      "side": "Buy",
+      "quantity": 200.0,
+      "price": 0.5,
+      "fee": 0.02,
+      "slippage_bps": 12.0,
+      "created_at": "2026-04-14T12:00:00Z"
+    }
+  ]
+}"#,
+    )
+    .unwrap();
+
+    let output = run_cli_raw(&[
+        "simulate-paper-fill",
+        "--store",
+        path.to_str().unwrap(),
+        "--order-id",
+        "ord-1",
+        "--decision-id",
+        "dec-1",
+        "--market",
+        "will-bitcoin-hit-100k",
+        "--outcome",
+        "yes",
+        "--side",
+        "buy",
+        "--amount-usd",
+        "100",
+        "--backend-account",
+        "paper-main",
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--json",
+    ]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: Value = serde_json::from_str(&stdout).unwrap();
+    let events = store.read_all().unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(parsed["kind"], "simulate_paper_fill");
+    assert_eq!(parsed["paper_execution"]["disposition"], "Imported");
+    assert_eq!(
+        parsed["paper_execution"]["fill_result"]["fill_id"],
+        "pm-paper-paper-main-trade-1"
+    );
+    assert_eq!(parsed["fill_observation"]["disposition"], "Observed");
+    assert_eq!(parsed["fill_observation"]["persisted"], true);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.event_type.as_str() == "fill.received")
+            .count(),
+        1
+    );
+    let second = run_cli_raw(&[
+        "simulate-paper-fill",
+        "--store",
+        path.to_str().unwrap(),
+        "--order-id",
+        "ord-1",
+        "--decision-id",
+        "dec-1",
+        "--market",
+        "will-bitcoin-hit-100k",
+        "--outcome",
+        "yes",
+        "--side",
+        "buy",
+        "--amount-usd",
+        "100",
+        "--backend-account",
+        "paper-main",
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--json",
+    ]);
+    let second_stdout = String::from_utf8(second.stdout).unwrap();
+    let second_parsed: Value = serde_json::from_str(&second_stdout).unwrap();
+    let events_after_second = store.read_all().unwrap();
+
+    assert!(second.status.success());
+    assert_eq!(second_parsed["fill_observation"]["duplicate"], true);
+    assert_eq!(
+        events_after_second
+            .iter()
+            .filter(|event| event.event_type.as_str() == "fill.received")
+            .count(),
+        1
+    );
+
+    cleanup(&path);
+    cleanup(&trades_path);
+}
+
+#[test]
+fn cli_run_paper_decisions_fixture_flow_persists_canonical_fill_once() {
+    let path = temp_store_path("run-paper-decisions");
+    let trades_path = temp_aux_path("paper-decision-trades", "json");
+    let store = JsonlEventStore::new(&path).unwrap();
+    let linkage = Linkage {
+        signal_id: Some("sig-paper".into()),
+        correlation_id: Some("corr-paper".into()),
+        ..signal_linkage()
+    };
+    store
+        .append_events(&[
+            stored_event(
+                EventEnvelope::new_signal_generated(
+                    "signal-engine",
+                    Some("will-bitcoin-hit-100k".into()),
+                    linkage.clone(),
+                    provenance(),
+                    SignalGenerated {
+                        signal_id: "sig-paper".into(),
+                        hypothesis_id: Some("hyp-1".into()),
+                        instrument: "will-bitcoin-hit-100k".into(),
+                        timeframe: "odds_jump".into(),
+                        side: SignalSide::Long,
+                        strength: 0.9,
+                        rationale: Some("paper runner".into()),
+                    },
+                )
+                .unwrap(),
+            ),
+            stored_event(
+                EventEnvelope::new_signal_confirmed(
+                    "confirmation-agent-v1",
+                    Some("will-bitcoin-hit-100k".into()),
+                    linkage,
+                    provenance(),
+                    SignalConfirmed {
+                        signal_id: "sig-paper".into(),
+                        confirmed_by: "confirmation-agent-v1".into(),
+                        confirmation_reason: None,
+                        confirmation_score: Some(0.9),
+                    },
+                )
+                .unwrap(),
+            ),
+        ])
+        .unwrap();
+    std::fs::write(
+        &trades_path,
+        r#"{
+  "trades": [
+    {
+      "id": "trade-paper-1",
+      "market": "will-bitcoin-hit-100k",
+      "outcome": "yes",
+      "side": "buy",
+      "quantity": 200.0,
+      "price": 0.5,
+      "fee": 0.02,
+      "slippage_bps": 12.0,
+      "created_at": "2026-04-14T12:00:00Z"
+    }
+  ]
+}"#,
+    )
+    .unwrap();
+
+    let output = run_cli_raw(&[
+        "run-paper-decisions",
+        "--store",
+        path.to_str().unwrap(),
+        "--backend-account",
+        "paper-main",
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--usd-size",
+        "100",
+        "--json",
+    ]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: Value = serde_json::from_str(&stdout).unwrap();
+    let events = store.read_all().unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(parsed["kind"], "run_paper_decisions");
+    assert_eq!(parsed["report"]["confirmed_signals_seen"], 1);
+    assert_eq!(parsed["report"]["execution_requests_sent"], 1);
+    assert_eq!(parsed["report"]["fills_persisted"], 1);
+    assert_eq!(parsed["report"]["items"][0]["outcome"], "yes");
+    assert_eq!(
+        parsed["report"]["items"][0]["order_id"],
+        "pm-paper-order-yes-sig-paper"
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.event_type.as_str() == "fill.received")
+            .count(),
+        1
+    );
+    let second = run_cli_raw(&[
+        "run-paper-decisions",
+        "--store",
+        path.to_str().unwrap(),
+        "--backend-account",
+        "paper-main",
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--usd-size",
+        "100",
+        "--json",
+    ]);
+    let second_stdout = String::from_utf8(second.stdout).unwrap();
+    let second_parsed: Value = serde_json::from_str(&second_stdout).unwrap();
+    let events_after_second = store.read_all().unwrap();
+
+    assert!(second.status.success());
+    assert_eq!(second_parsed["report"]["execution_requests_sent"], 0);
+    assert_eq!(second_parsed["report"]["skipped_already_executed"], 1);
+    assert_eq!(
+        events_after_second
+            .iter()
+            .filter(|event| event.event_type.as_str() == "fill.received")
+            .count(),
+        1
+    );
+
+    cleanup(&path);
+    cleanup(&trades_path);
+}
+
+#[test]
+fn cli_run_paper_decisions_reports_risk_blocks() {
+    let path = temp_store_path("run-paper-decisions-risk");
+    let trades_path = temp_aux_path("paper-decision-risk-trades", "json");
+    let store = JsonlEventStore::new(&path).unwrap();
+    let linkage = Linkage {
+        signal_id: Some("sig-risk".into()),
+        correlation_id: Some("corr-risk".into()),
+        ..signal_linkage()
+    };
+    store
+        .append_events(&[
+            stored_event(
+                EventEnvelope::new_signal_generated(
+                    "signal-engine",
+                    Some("risk-market".into()),
+                    linkage.clone(),
+                    provenance(),
+                    SignalGenerated {
+                        signal_id: "sig-risk".into(),
+                        hypothesis_id: Some("hyp-1".into()),
+                        instrument: "risk-market".into(),
+                        timeframe: "odds_jump".into(),
+                        side: SignalSide::Long,
+                        strength: 0.9,
+                        rationale: Some("risk block".into()),
+                    },
+                )
+                .unwrap(),
+            ),
+            stored_event(
+                EventEnvelope::new_signal_confirmed(
+                    "confirmation-agent-v1",
+                    Some("risk-market".into()),
+                    linkage,
+                    provenance(),
+                    SignalConfirmed {
+                        signal_id: "sig-risk".into(),
+                        confirmed_by: "confirmation-agent-v1".into(),
+                        confirmation_reason: None,
+                        confirmation_score: Some(0.9),
+                    },
+                )
+                .unwrap(),
+            ),
+        ])
+        .unwrap();
+    std::fs::write(
+        &trades_path,
+        r#"{"trades":[{"id":"trade-risk-1","market":"risk-market","outcome":"yes","side":"buy","quantity":200.0,"price":0.5,"created_at":"2026-04-14T12:00:00Z"}]}"#,
+    )
+    .unwrap();
+
+    let json_output = run_cli_raw(&[
+        "run-paper-decisions",
+        "--store",
+        path.to_str().unwrap(),
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--max-open-positions",
+        "0",
+        "--json",
+    ]);
+    let parsed: Value = serde_json::from_slice(&json_output.stdout).unwrap();
+
+    assert!(json_output.status.success());
+    assert_eq!(parsed["report"]["execution_requests_sent"], 0);
+    assert_eq!(parsed["report"]["blocked_by_risk"], 1);
+    assert_eq!(parsed["report"]["blocked_max_open_positions"], 1);
+    assert_eq!(parsed["report"]["items"][0]["disposition"], "BlockedByRisk");
+
+    let text_output = run_cli_raw(&[
+        "run-paper-decisions",
+        "--store",
+        path.to_str().unwrap(),
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--max-open-positions",
+        "0",
+    ]);
+    let stdout = String::from_utf8(text_output.stdout).unwrap();
+
+    assert!(text_output.status.success());
+    assert!(stdout.contains("blocked_by_risk: 1"));
+    assert!(stdout.contains("blocked_max_open_positions: 1"));
+
+    cleanup(&path);
+    cleanup(&trades_path);
+}
+
+#[test]
+fn cli_run_paper_pipeline_json_reports_ordered_stages_and_persists_fill_once() {
+    let dir = temp_dir_path("run-paper-pipeline");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("events.jsonl");
+    let trades_path = dir.join("trades.json");
+    let store = JsonlEventStore::new(&path).unwrap();
+    append_pipeline_signal(
+        &store,
+        "sig-pipeline",
+        "market-pipeline",
+        SignalSide::Long,
+        0.9,
+    );
+    write_pipeline_trades(&trades_path, "market-pipeline", "yes");
+
+    let output = run_cli_raw(&[
+        "run-paper-pipeline",
+        "--store",
+        path.to_str().unwrap(),
+        "--backend-account",
+        "paper-main",
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--usd-size",
+        "100",
+        "--json",
+    ]);
+    let parsed: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let events = store.read_all().unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(parsed["kind"], "run_paper_pipeline");
+    assert_eq!(
+        parsed["report"]["stages"],
+        serde_json::json!([
+            "load_existing_signals",
+            "confirm_signals",
+            "run_paper_decisions",
+            "project_paper_ledger"
+        ])
+    );
+    assert_eq!(parsed["report"]["signals_seen"], 1);
+    assert_eq!(parsed["report"]["signals_generated"], 0);
+    assert_eq!(parsed["report"]["signals_confirmed"], 1);
+    assert_eq!(parsed["report"]["execution_requests_sent"], 1);
+    assert_eq!(parsed["report"]["fills_persisted"], 1);
+    assert_eq!(parsed["report"]["open_positions"], 1);
+    assert_eq!(parsed["report"]["total_notional_spent"], 100.0);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.event_type.as_str() == "fill.received")
+            .count(),
+        1
+    );
+    let latest_summary = path
+        .parent()
+        .unwrap()
+        .join("operations/latest_summary.json");
+    let summary: Value = serde_json::from_slice(&std::fs::read(&latest_summary).unwrap()).unwrap();
+    assert_eq!(summary["pipeline"]["fills_persisted"], 1);
+    assert_eq!(summary["paper"]["open_positions"], 1);
+
+    let second = run_cli_raw(&[
+        "run-paper-pipeline",
+        "--store",
+        path.to_str().unwrap(),
+        "--backend-account",
+        "paper-main",
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--usd-size",
+        "100",
+        "--json",
+    ]);
+    let second_parsed: Value = serde_json::from_slice(&second.stdout).unwrap();
+    let events_after_second = store.read_all().unwrap();
+
+    assert!(second.status.success());
+    assert_eq!(second_parsed["report"]["signals_confirmed"], 0);
+    assert_eq!(second_parsed["report"]["execution_requests_sent"], 0);
+    assert_eq!(second_parsed["report"]["fills_persisted"], 0);
+    assert_eq!(second_parsed["report"]["open_positions"], 1);
+    assert_eq!(
+        events_after_second
+            .iter()
+            .filter(|event| event.event_type.as_str() == "fill.received")
+            .count(),
+        1
+    );
+
+    cleanup(&path);
+    cleanup(&trades_path);
+    cleanup(&latest_summary);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn cli_run_paper_pipeline_propagates_policy_file_freeze() {
+    let path = temp_store_path("run-paper-pipeline-policy");
+    let policy_path = temp_aux_path("paper-pipeline-policy", "json");
+    let trades_path = temp_aux_path("paper-pipeline-policy-trades", "json");
+    let store = JsonlEventStore::new(&path).unwrap();
+    append_pipeline_signal(&store, "sig-policy", "market-policy", SignalSide::Long, 0.9);
+    write_pipeline_trades(&trades_path, "market-policy", "yes");
+    std::fs::write(
+        &policy_path,
+        r#"{"rules":[{"signal_name":"odds_jump","direction":"Yes","status":"frozen"}]}"#,
+    )
+    .unwrap();
+
+    let output = run_cli_raw(&[
+        "run-paper-pipeline",
+        "--store",
+        path.to_str().unwrap(),
+        "--policy-file",
+        policy_path.to_str().unwrap(),
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--json",
+    ]);
+    let parsed: Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(parsed["report"]["signals_seen"], 1);
+    assert_eq!(parsed["report"]["signals_confirmed"], 0);
+    assert_eq!(parsed["report"]["execution_requests_sent"], 0);
+    assert_eq!(parsed["report"]["fills_persisted"], 0);
+
+    cleanup(&path);
+    cleanup(&policy_path);
+    cleanup(&trades_path);
+}
+
+#[test]
+fn cli_run_paper_pipeline_propagates_risk_guard_and_text_report() {
+    let path = temp_store_path("run-paper-pipeline-risk");
+    let trades_path = temp_aux_path("paper-pipeline-risk-trades", "json");
+    let store = JsonlEventStore::new(&path).unwrap();
+    append_pipeline_signal(
+        &store,
+        "sig-risk-pipeline",
+        "market-risk-pipeline",
+        SignalSide::Long,
+        0.9,
+    );
+    write_pipeline_trades(&trades_path, "market-risk-pipeline", "yes");
+
+    let output = run_cli_raw(&[
+        "run-paper-pipeline",
+        "--store",
+        path.to_str().unwrap(),
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--max-open-positions",
+        "0",
+        "--json",
+    ]);
+    let parsed: Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(parsed["report"]["signals_confirmed"], 1);
+    assert_eq!(parsed["report"]["execution_requests_sent"], 0);
+    assert_eq!(parsed["report"]["blocked_by_risk"], 1);
+    assert_eq!(parsed["report"]["fills_persisted"], 0);
+
+    let text_output = run_cli_raw(&[
+        "run-paper-pipeline",
+        "--store",
+        path.to_str().unwrap(),
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--max-open-positions",
+        "0",
+    ]);
+    let stdout = String::from_utf8(text_output.stdout).unwrap();
+
+    assert!(text_output.status.success());
+    assert!(stdout.contains("Paper Pipeline"));
+    assert!(stdout.contains("signals_seen: 1"));
+    assert!(stdout.contains("blocked_by_risk: 1"));
+    assert!(stdout.contains("- load_existing_signals"));
+    assert!(stdout.contains("- project_paper_ledger"));
+
+    cleanup(&path);
+    cleanup(&trades_path);
+}
+
+#[test]
+fn cli_serve_dashboard_writes_static_control_room() {
+    let path = temp_store_path("serve-dashboard");
+    let trades_path = temp_aux_path("serve-dashboard-trades", "json");
+    let output_path = temp_aux_path("control-room", "html");
+    let store = JsonlEventStore::new(&path).unwrap();
+    append_pipeline_signal(
+        &store,
+        "sig-dashboard",
+        "market-dashboard",
+        SignalSide::Long,
+        0.9,
+    );
+    write_pipeline_trades(&trades_path, "market-dashboard", "yes");
+
+    let pipeline = run_cli_raw(&[
+        "run-paper-pipeline",
+        "--store",
+        path.to_str().unwrap(),
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--json",
+    ]);
+    assert!(pipeline.status.success());
+
+    let dashboard = run_cli_raw(&[
+        "serve-dashboard",
+        "--store",
+        path.to_str().unwrap(),
+        "--output",
+        output_path.to_str().unwrap(),
+        "--json",
+    ]);
+    let parsed: Value = serde_json::from_slice(&dashboard.stdout).unwrap();
+    let html = std::fs::read_to_string(&output_path).unwrap();
+
+    assert!(dashboard.status.success());
+    assert_eq!(parsed["kind"], "serve_dashboard");
+    assert_eq!(parsed["output_path"], output_path.display().to_string());
+    assert!(html.contains("2EXCAMIM Control Room"));
+    assert!(html.contains("Pipeline Summary"));
+    assert!(html.contains("Paper Trading State"));
+    assert!(html.contains("realized_pnl_total"));
+    assert!(html.contains("Governance / Readiness"));
+    assert!(html.contains("Recent Activity"));
+    assert!(html.contains("market-dashboard"));
+
+    cleanup(&path);
+    cleanup(&trades_path);
+    cleanup(&output_path);
+    let latest = path
+        .parent()
+        .unwrap()
+        .join("dashboard/latest_pipeline.json");
+    cleanup(&latest);
+    let latest_summary = path
+        .parent()
+        .unwrap()
+        .join("operations/latest_summary.json");
+    cleanup(&latest_summary);
+}
+
+#[test]
+fn cli_generate_operational_summary_writes_json_and_markdown() {
+    let dir = temp_dir_path("operational-summary");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("events.jsonl");
+    let trades_path = dir.join("trades.json");
+    let json_output_path = dir.join("latest_summary.json");
+    let markdown_output_path = dir.join("latest_summary.md");
+    let store = JsonlEventStore::new(&path).unwrap();
+    append_pipeline_signal(
+        &store,
+        "sig-operational-summary",
+        "market-operational-summary",
+        SignalSide::Long,
+        0.9,
+    );
+    write_pipeline_trades(&trades_path, "market-operational-summary", "yes");
+
+    let pipeline = run_cli_raw(&[
+        "run-paper-pipeline",
+        "--store",
+        path.to_str().unwrap(),
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--json",
+    ]);
+    assert!(pipeline.status.success());
+
+    let json_summary = run_cli_raw(&[
+        "generate-operational-summary",
+        "--store",
+        path.to_str().unwrap(),
+        "--output",
+        json_output_path.to_str().unwrap(),
+        "--format",
+        "json",
+        "--json",
+    ]);
+    let response: Value = serde_json::from_slice(&json_summary.stdout).unwrap();
+    let summary: Value =
+        serde_json::from_slice(&std::fs::read(&json_output_path).unwrap()).unwrap();
+
+    assert!(json_summary.status.success());
+    assert_eq!(response["kind"], "generate_operational_summary");
+    assert_eq!(response["format"], "json");
+    assert_eq!(summary["pipeline"]["signals_seen"], 1);
+    assert_eq!(summary["pipeline"]["signals_confirmed"], 1);
+    assert_eq!(summary["pipeline"]["execution_requests_sent"], 1);
+    assert_eq!(summary["pipeline"]["fills_persisted"], 1);
+    assert_eq!(summary["pipeline"]["blocked_by_risk"], 0);
+    assert_eq!(summary["paper"]["open_positions"], 1);
+    assert_eq!(summary["paper"]["closed_positions"], 0);
+    assert_eq!(summary["governance"]["policy_available"], false);
+    assert_eq!(
+        summary["recent_activity"]["fills"][0]["instrument"],
+        "market-operational-summary"
+    );
+    assert_eq!(
+        summary["recent_activity"]["orders"][0]["instrument"],
+        "market-operational-summary"
+    );
+
+    let markdown_summary = run_cli_raw(&[
+        "generate-operational-summary",
+        "--store",
+        path.to_str().unwrap(),
+        "--output",
+        markdown_output_path.to_str().unwrap(),
+        "--format",
+        "markdown",
+    ]);
+    let markdown = std::fs::read_to_string(&markdown_output_path).unwrap();
+
+    assert!(markdown_summary.status.success());
+    assert!(markdown.contains("# 2EXCAMIM Operational Summary"));
+    assert!(markdown.contains("## Pipeline Recap"));
+    assert!(markdown.contains("- signals_seen: 1"));
+    assert!(markdown.contains("## Recent Activity"));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn append_pipeline_signal(
+    store: &JsonlEventStore,
+    signal_id: &str,
+    market_id: &str,
+    side: SignalSide,
+    strength: f64,
+) {
+    let linkage = Linkage {
+        signal_id: Some(signal_id.into()),
+        correlation_id: Some(format!("corr-{signal_id}")),
+        ..signal_linkage()
+    };
+    store
+        .append_event(&stored_event(
+            EventEnvelope::new_signal_generated(
+                "signal-engine",
+                Some(market_id.into()),
+                linkage,
+                provenance(),
+                SignalGenerated {
+                    signal_id: signal_id.into(),
+                    hypothesis_id: Some("hyp-1".into()),
+                    instrument: market_id.into(),
+                    timeframe: "odds_jump".into(),
+                    side,
+                    strength,
+                    rationale: Some("paper pipeline".into()),
+                },
+            )
+            .unwrap(),
+        ))
+        .unwrap();
+}
+
+fn write_pipeline_trades(path: &Path, market_id: &str, outcome: &str) {
+    std::fs::write(
+        path,
+        format!(
+            r#"{{
+  "trades": [
+    {{
+      "id": "trade-{market_id}",
+      "market": "{market_id}",
+      "outcome": "{outcome}",
+      "side": "buy",
+      "quantity": 200.0,
+      "price": 0.5,
+      "fee": 0.02,
+      "slippage_bps": 12.0,
+      "created_at": "2026-04-14T12:00:00Z"
+    }}
+  ]
+}}"#
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn cli_show_paper_ledger_json_reports_projection_summary() {
+    let path = temp_store_path("show-paper-ledger");
+    let store = JsonlEventStore::new(&path).unwrap();
+    let linkage = Linkage {
+        signal_id: Some("sig-ledger".into()),
+        decision_id: Some("dec-ledger".into()),
+        order_id: Some("pm-paper-order-sig-ledger".into()),
+        correlation_id: Some("corr-ledger".into()),
+        ..Linkage::default()
+    };
+    store
+        .append_events(&[
+            stored_event(
+                EventEnvelope::new_order_registered(
+                    "paper-runner",
+                    Some("market-ledger".into()),
+                    linkage.clone(),
+                    provenance(),
+                    OrderRegistered {
+                        order_id: "pm-paper-order-sig-ledger".into(),
+                        decision_id: Some("dec-ledger".into()),
+                        instrument: "market-ledger".into(),
+                        venue: "polymarket-paper".into(),
+                    },
+                )
+                .unwrap(),
+            ),
+            stored_event(
+                EventEnvelope::new_order_submitted(
+                    "paper-runner",
+                    Some("market-ledger".into()),
+                    linkage.clone(),
+                    provenance(),
+                    OrderSubmitted {
+                        order_id: "pm-paper-order-sig-ledger".into(),
+                        decision_id: Some("dec-ledger".into()),
+                        instrument: "market-ledger".into(),
+                        venue: "polymarket-paper".into(),
+                    },
+                )
+                .unwrap(),
+            ),
+            stored_event(
+                EventEnvelope::new_fill_received(
+                    "paper-runner",
+                    Some("market-ledger".into()),
+                    linkage.clone(),
+                    provenance(),
+                    FillReceived {
+                        fill_id: "pm-paper-paper-main-trade-ledger-1".into(),
+                        decision_id: Some("dec-ledger".into()),
+                        order_id: "pm-paper-order-sig-ledger".into(),
+                        instrument: "market-ledger".into(),
+                        side: FillSide::Buy,
+                        quantity: 10.0,
+                        price: 0.4,
+                        venue: "polymarket-paper".into(),
+                        executed_at: chrono::TimeZone::with_ymd_and_hms(
+                            &Utc, 2026, 4, 14, 12, 0, 0,
+                        )
+                        .unwrap(),
+                    },
+                )
+                .unwrap(),
+            ),
+            stored_event(
+                EventEnvelope::new_fill_received(
+                    "paper-runner",
+                    Some("market-ledger".into()),
+                    linkage,
+                    provenance(),
+                    FillReceived {
+                        fill_id: "pm-paper-paper-main-trade-ledger-2".into(),
+                        decision_id: Some("dec-ledger".into()),
+                        order_id: "pm-paper-order-sig-ledger".into(),
+                        instrument: "market-ledger".into(),
+                        side: FillSide::Sell,
+                        quantity: 4.0,
+                        price: 0.6,
+                        venue: "polymarket-paper".into(),
+                        executed_at: chrono::TimeZone::with_ymd_and_hms(
+                            &Utc, 2026, 4, 14, 13, 0, 0,
+                        )
+                        .unwrap(),
+                    },
+                )
+                .unwrap(),
+            ),
+        ])
+        .unwrap();
+
+    let output = run_cli_raw(&[
+        "show-paper-ledger",
+        "--store",
+        path.to_str().unwrap(),
+        "--json",
+    ]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: Value = serde_json::from_str(&stdout).unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(parsed["kind"], "show_paper_ledger");
+    assert_eq!(parsed["ledger"]["summary"]["total_orders"], 1);
+    assert_eq!(parsed["ledger"]["summary"]["total_fills"], 2);
+    assert_eq!(parsed["ledger"]["summary"]["open_positions"], 1);
+    assert_eq!(parsed["ledger"]["summary"]["closed_positions"], 0);
+    assert_eq!(parsed["ledger"]["summary"]["total_notional_spent"], 4.0);
+    assert_eq!(parsed["ledger"]["summary"]["total_notional_received"], 2.4);
+    assert_close_json(&parsed["ledger"]["summary"]["realized_pnl_total"], 0.8);
+    assert_close_json(&parsed["ledger"]["summary"]["unrealized_pnl_total"], 1.2);
+    assert_eq!(
+        parsed["ledger"]["open_positions"][0]["lifecycle"],
+        "PartiallyClosed"
+    );
+    assert_eq!(parsed["ledger"]["open_positions"][0]["net_shares"], 6.0);
+    assert_close_json(&parsed["ledger"]["open_positions"][0]["realized_pnl"], 0.8);
+    assert_close_json(
+        &parsed["ledger"]["open_positions"][0]["unrealized_pnl"],
+        1.2,
+    );
+
+    cleanup(&path);
+}
+
+#[test]
+fn cli_show_paper_ledger_text_is_compact() {
+    let path = temp_store_path("show-paper-ledger-text");
+    let store = JsonlEventStore::new(&path).unwrap();
+    let linkage = Linkage {
+        signal_id: Some("sig-ledger-text".into()),
+        decision_id: Some("dec-ledger-text".into()),
+        order_id: Some("pm-paper-order-sig-ledger-text".into()),
+        ..Linkage::default()
+    };
+    store
+        .append_event(&stored_event(
+            EventEnvelope::new_fill_received(
+                "paper-runner",
+                Some("market-ledger-text".into()),
+                linkage,
+                provenance(),
+                FillReceived {
+                    fill_id: "pm-paper-paper-main-trade-ledger-text".into(),
+                    decision_id: Some("dec-ledger-text".into()),
+                    order_id: "pm-paper-order-sig-ledger-text".into(),
+                    instrument: "market-ledger-text".into(),
+                    side: FillSide::Buy,
+                    quantity: 5.0,
+                    price: 0.2,
+                    venue: "polymarket-paper".into(),
+                    executed_at: chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 4, 14, 12, 0, 0)
+                        .unwrap(),
+                },
+            )
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let output = run_cli_raw(&["show-paper-ledger", "--store", path.to_str().unwrap()]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    assert!(output.status.success());
+    assert!(stdout.contains("Paper Ledger"));
+    assert!(stdout.contains("total_fills: 1"));
+    assert!(stdout.contains("open_positions: 1"));
+    assert!(stdout.contains("closed_positions: 0"));
+    assert!(stdout.contains("total_notional_spent: 1.00000000"));
+    assert!(stdout.contains("realized_pnl_total: 0.00000000"));
+    assert!(stdout.contains("unrealized_pnl_total: 0"));
 
     cleanup(&path);
 }

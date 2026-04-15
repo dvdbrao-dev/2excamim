@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 use std::path::PathBuf;
 
-use crate::ConfirmationPolicyProposal;
 use crate::{
     agents::{ConfirmationComparisonReport, ConfirmationPolicyAdvisory, PolicySweepSummary},
     batch_runner::BatchRunReport,
@@ -21,6 +20,12 @@ use crate::{
     },
     store::StoredEvent,
 };
+use crate::{
+    ConfirmationPolicyProposal, ConfirmationReadinessReport, PaperDecisionRunReport,
+    PaperExecutionImportReport, PaperLedgerProjection,
+};
+
+use super::PaperPipelineReport;
 
 pub(crate) fn confirm_signals(
     report: &crate::ConfirmationRunReport,
@@ -290,6 +295,297 @@ pub(crate) fn propose_confirmation_policy(
         }
     }
     lines.join("\n")
+}
+
+pub(crate) fn materialize_confirmation_readiness(
+    report: &ConfirmationReadinessReport,
+    store_path: &PathBuf,
+    snapshots_path: &PathBuf,
+    output_path: &PathBuf,
+) -> String {
+    let mut lines = vec![
+        "Confirmation Readiness".to_string(),
+        format!("store_path: {}", store_path.display()),
+        format!("snapshots_path: {}", snapshots_path.display()),
+        format!("output_path: {}", output_path.display()),
+        format!("generated_at: {}", report.generated_at.to_rfc3339()),
+        format!("total: {}", report.summary.total),
+        format!("experimental: {}", report.summary.experimental),
+        format!("candidate: {}", report.summary.candidate),
+        format!("promoted: {}", report.summary.promoted),
+        format!("frozen: {}", report.summary.frozen),
+        "states:".to_string(),
+    ];
+    if report.states.is_empty() {
+        lines.push("- none".to_string());
+    } else {
+        for state in &report.states {
+            lines.push(format!(
+                "- signal_name={} readiness_status={:?} direction={} source={} samples={} promote_candidate_count={} review_count={} freeze_candidate_count={}",
+                state.signal_name,
+                state.readiness_status,
+                display_debug_option(state.direction.as_ref()),
+                display_debug_option(state.source.as_ref()),
+                state.evidence.confirmed_sample_count,
+                state.evidence.promote_candidate_count,
+                state.evidence.review_count,
+                state.evidence.freeze_candidate_count
+            ));
+        }
+    }
+    lines.push("by_direction:".to_string());
+    append_readiness_breakdown(&mut lines, &report.summary.by_direction);
+    lines.push("by_source:".to_string());
+    append_readiness_breakdown(&mut lines, &report.summary.by_source);
+    lines.join("\n")
+}
+
+pub(crate) fn simulate_paper_fill(
+    import_report: &PaperExecutionImportReport,
+    observation_report: Option<&FillObservationReport>,
+    store_path: &PathBuf,
+) -> String {
+    let mut lines = vec![
+        "Polymarket Paper Fill Simulation".to_string(),
+        format!("store_path: {}", store_path.display()),
+        format!("disposition: {:?}", import_report.disposition),
+        format!("backend_account: {}", import_report.backend_account),
+        format!(
+            "backend_data_dir: {}",
+            import_report.backend_data_dir.display()
+        ),
+        format!(
+            "backend_trade_id: {}",
+            display_option(import_report.backend_trade_id.as_deref())
+        ),
+    ];
+    if let Some(fill) = &import_report.fill_result {
+        lines.extend([
+            format!("fill_id: {}", fill.fill_id),
+            format!("order_id: {}", fill.order_id),
+            format!("decision_id: {}", fill.decision_id),
+            format!("instrument: {}", fill.instrument),
+            format!("side: {:?}", fill.side),
+            format!("quantity: {:.8}", fill.quantity),
+            format!("avg_price: {:.8}", fill.avg_price),
+            format!("fee: {}", display_option_number(fill.fee)),
+            format!("slippage_bps: {}", display_option_number(fill.slippage_bps)),
+            format!("executed_at: {}", fill.executed_at.to_rfc3339()),
+        ]);
+    }
+    if let Some(observation) = observation_report {
+        lines.extend([
+            format!(
+                "fill_observation_disposition: {:?}",
+                observation.disposition
+            ),
+            format!("persisted: {}", observation.persisted),
+            format!("duplicate: {}", observation.duplicate),
+        ]);
+    }
+    lines.push("notes:".to_string());
+    if import_report.notes.is_empty() {
+        lines.push("- none".to_string());
+    } else {
+        for note in &import_report.notes {
+            lines.push(format!("- {note}"));
+        }
+    }
+    lines.join("\n")
+}
+
+pub(crate) fn run_paper_decisions(report: &PaperDecisionRunReport, store_path: &PathBuf) -> String {
+    let mut lines = vec![
+        "Paper Decision Run".to_string(),
+        format!("store_path: {}", store_path.display()),
+        format!("dry_run: {}", report.dry_run),
+        format!("confirmed_signals_seen: {}", report.confirmed_signals_seen),
+        format!(
+            "execution_requests_sent: {}",
+            report.execution_requests_sent
+        ),
+        format!("fills_persisted: {}", report.fills_persisted),
+        format!(
+            "skipped_already_executed: {}",
+            report.skipped_already_executed
+        ),
+        format!("skipped_unsupported: {}", report.skipped_unsupported),
+        format!("duplicates: {}", report.duplicates),
+        format!("blocked_by_risk: {}", report.blocked_by_risk),
+        format!(
+            "blocked_max_open_positions: {}",
+            report.blocked_max_open_positions
+        ),
+        format!(
+            "blocked_max_total_exposure: {}",
+            report.blocked_max_total_exposure
+        ),
+        format!(
+            "blocked_market_exposure: {}",
+            report.blocked_market_exposure
+        ),
+        format!(
+            "blocked_duplicate_market_outcome: {}",
+            report.blocked_duplicate_market_outcome
+        ),
+        format!(
+            "blocked_market_order_limit: {}",
+            report.blocked_market_order_limit
+        ),
+        "items:".to_string(),
+    ];
+    if report.items.is_empty() {
+        lines.push("- none".to_string());
+    } else {
+        for item in &report.items {
+            lines.push(format!(
+                "- signal_id={} disposition={:?} order_id={} outcome={} side={} fill_id={} persisted={} duplicate={}",
+                item.signal_id,
+                item.disposition,
+                display_option(item.order_id.as_deref()),
+                display_option(item.outcome.as_deref()),
+                display_debug_option(item.side.as_ref()),
+                display_option(item.fill_id.as_deref()),
+                item.persisted,
+                item.duplicate
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
+pub(crate) fn run_paper_pipeline(report: &PaperPipelineReport, store_path: &PathBuf) -> String {
+    let mut lines = vec![
+        "Paper Pipeline".to_string(),
+        format!("store_path: {}", store_path.display()),
+        format!("dry_run: {}", report.dry_run),
+        format!("signals_seen: {}", report.signals_seen),
+        format!("signals_generated: {}", report.signals_generated),
+        format!("signals_confirmed: {}", report.signals_confirmed),
+        format!(
+            "execution_requests_sent: {}",
+            report.execution_requests_sent
+        ),
+        format!("fills_persisted: {}", report.fills_persisted),
+        format!("blocked_by_risk: {}", report.blocked_by_risk),
+        format!("open_positions: {}", report.open_positions),
+        format!("total_notional_spent: {:.8}", report.total_notional_spent),
+        format!(
+            "total_notional_received: {:.8}",
+            report.total_notional_received
+        ),
+        format!(
+            "readiness_states_materialized: {}",
+            display_option_usize(report.readiness_states_materialized)
+        ),
+        "stages:".to_string(),
+    ];
+    for stage in &report.stages {
+        lines.push(format!("- {stage}"));
+    }
+    lines.join("\n")
+}
+
+pub(crate) fn show_paper_ledger(ledger: &PaperLedgerProjection, store_path: &PathBuf) -> String {
+    let mut lines = vec![
+        "Paper Ledger".to_string(),
+        format!("store_path: {}", store_path.display()),
+        format!("total_orders: {}", ledger.summary.total_orders),
+        format!("total_fills: {}", ledger.summary.total_fills),
+        format!("open_positions: {}", ledger.summary.open_positions),
+        format!("closed_positions: {}", ledger.summary.closed_positions),
+        format!(
+            "total_notional_spent: {:.8}",
+            ledger.summary.total_notional_spent
+        ),
+        format!(
+            "total_notional_received: {:.8}",
+            ledger.summary.total_notional_received
+        ),
+        format!(
+            "realized_pnl_total: {:.8}",
+            ledger.summary.realized_pnl_total
+        ),
+        format!(
+            "unrealized_pnl_total: {}",
+            display_option_number(ledger.summary.unrealized_pnl_total)
+        ),
+        format!(
+            "backend_accounts_seen: {}",
+            display_list(&ledger.summary.backend_accounts_seen)
+        ),
+        "open_positions:".to_string(),
+    ];
+    if ledger.open_positions.is_empty() {
+        lines.push("- none".to_string());
+    } else {
+        for position in &ledger.open_positions {
+            lines.push(format!(
+                "- instrument={} outcome={} lifecycle={:?} net_shares={:.8} average_entry_price={} current_mark_price={} notional_spent={:.8} notional_received={:.8} realized_pnl={:.8} unrealized_pnl={}",
+                position.instrument,
+                position.outcome,
+                position.lifecycle,
+                position.net_shares,
+                display_option_number(position.average_entry_price),
+                display_option_number(position.current_mark_price),
+                position.notional_spent,
+                position.notional_received,
+                position.realized_pnl,
+                display_option_number(position.unrealized_pnl)
+            ));
+        }
+    }
+    lines.push("closed_positions:".to_string());
+    if ledger.closed_positions.is_empty() {
+        lines.push("- none".to_string());
+    } else {
+        for position in &ledger.closed_positions {
+            lines.push(format!(
+                "- instrument={} outcome={} lifecycle={:?} net_shares={:.8} notional_spent={:.8} notional_received={:.8} realized_pnl={:.8}",
+                position.instrument,
+                position.outcome,
+                position.lifecycle,
+                position.net_shares,
+                position.notional_spent,
+                position.notional_received,
+                position.realized_pnl
+            ));
+        }
+    }
+    lines.push("exposure_by_market:".to_string());
+    append_paper_exposure(&mut lines, &ledger.summary.exposure_by_market);
+    lines.push("exposure_by_outcome:".to_string());
+    append_paper_exposure(&mut lines, &ledger.summary.exposure_by_outcome);
+    lines.join("\n")
+}
+
+fn append_paper_exposure(lines: &mut Vec<String>, rows: &[crate::PaperExposureView]) {
+    if rows.is_empty() {
+        lines.push("- none".to_string());
+    } else {
+        for row in rows {
+            lines.push(format!(
+                "- key={} net_shares={:.8} notional_spent={:.8} notional_received={:.8}",
+                row.key, row.net_shares, row.notional_spent, row.notional_received
+            ));
+        }
+    }
+}
+
+fn append_readiness_breakdown(
+    lines: &mut Vec<String>,
+    rows: &[crate::ConfirmationReadinessBreakdownRow],
+) {
+    if rows.is_empty() {
+        lines.push("- none".to_string());
+    } else {
+        for row in rows {
+            lines.push(format!(
+                "- key={} total={} experimental={} candidate={} promoted={} frozen={}",
+                row.key, row.total, row.experimental, row.candidate, row.promoted, row.frozen
+            ));
+        }
+    }
 }
 
 pub(crate) fn batch_run(report: &BatchRunReport) -> String {
@@ -1232,6 +1528,12 @@ fn display_option(value: Option<&str>) -> String {
 }
 
 fn display_option_number(value: Option<f64>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "none".into())
+}
+
+fn display_option_usize(value: Option<usize>) -> String {
     value
         .map(|value| value.to_string())
         .unwrap_or_else(|| "none".into())

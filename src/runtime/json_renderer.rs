@@ -3,7 +3,6 @@ use std::path::PathBuf;
 
 use serde_json::{json, Value};
 
-use crate::ConfirmationPolicyProposal;
 use crate::{
     agents::{
         ConfirmationComparisonReport, ConfirmationPolicyAdvisory, ConfirmationWalkForwardReport,
@@ -26,6 +25,12 @@ use crate::{
     },
     store::StoredEvent,
 };
+use crate::{
+    ConfirmationPolicyProposal, ConfirmationReadinessReport, PaperDecisionRunReport,
+    PaperExecutionImportReport, PaperLedgerProjection,
+};
+
+use super::PaperPipelineReport;
 
 pub(crate) fn confirmation_run(
     report: &crate::ConfirmationRunReport,
@@ -259,6 +264,58 @@ pub(crate) fn propose_confirmation_policy(
             "frozen_rules": proposal.summary.frozen_rules,
         },
         "policy": proposal.policy,
+    })
+}
+
+pub(crate) fn materialize_confirmation_readiness(
+    report: &ConfirmationReadinessReport,
+    store_path: &PathBuf,
+    snapshots_path: &PathBuf,
+    output_path: &PathBuf,
+) -> Value {
+    json!({
+        "kind": "materialize_confirmation_readiness",
+        "store_path": store_path.display().to_string(),
+        "snapshots_path": snapshots_path.display().to_string(),
+        "output_path": output_path.display().to_string(),
+        "readiness": report,
+    })
+}
+
+pub(crate) fn simulate_paper_fill(
+    import_report: &PaperExecutionImportReport,
+    observation_report: Option<&FillObservationReport>,
+    store_path: &PathBuf,
+) -> Value {
+    json!({
+        "kind": "simulate_paper_fill",
+        "store_path": store_path.display().to_string(),
+        "paper_execution": import_report,
+        "fill_observation": observation_report,
+    })
+}
+
+pub(crate) fn run_paper_decisions(report: &PaperDecisionRunReport, store_path: &PathBuf) -> Value {
+    json!({
+        "kind": "run_paper_decisions",
+        "store_path": store_path.display().to_string(),
+        "report": report,
+    })
+}
+
+pub(crate) fn run_paper_pipeline(report: &PaperPipelineReport, store_path: &PathBuf) -> Value {
+    json!({
+        "kind": "run_paper_pipeline",
+        "store_path": store_path.display().to_string(),
+        "report": report,
+    })
+}
+
+pub(crate) fn show_paper_ledger(ledger: &PaperLedgerProjection, store_path: &PathBuf) -> Value {
+    json!({
+        "kind": "show_paper_ledger",
+        "store_path": store_path.display().to_string(),
+        "ledger": ledger,
     })
 }
 
