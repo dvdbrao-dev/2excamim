@@ -550,7 +550,7 @@ fn render_serve_dashboard(config: &Config) -> Result<String, RuntimeError> {
 
     match config.format {
         OutputFormat::Text => Ok(format!(
-            "Dashboard\noutput_path: {}\ndata_sources: events, paper ledger projection, readiness artifact if present, policy file if provided, latest pipeline report if present",
+            "Dashboard\noutput_path: {}\ndata_sources: events, paper ledger projection, readiness artifact if present, policy file if provided, latest pipeline report if present, latest operational summary if present",
             output_path.display()
         )),
         OutputFormat::Json => Ok(serde_json::to_string_pretty(&serde_json::json!({
@@ -561,7 +561,8 @@ fn render_serve_dashboard(config: &Config) -> Result<String, RuntimeError> {
                 "paper_ledger_projection",
                 "readiness_artifact",
                 "policy_file",
-                "latest_pipeline_report"
+                "latest_pipeline_report",
+                "latest_operational_summary"
             ]
         }))?),
     }

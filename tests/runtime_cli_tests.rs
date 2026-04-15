@@ -1833,11 +1833,16 @@ fn cli_serve_dashboard_writes_static_control_room() {
     assert_eq!(parsed["kind"], "serve_dashboard");
     assert_eq!(parsed["output_path"], output_path.display().to_string());
     assert!(html.contains("2EXCAMIM Control Room"));
-    assert!(html.contains("Pipeline Summary"));
-    assert!(html.contains("Paper Trading State"));
-    assert!(html.contains("realized_pnl_total"));
-    assert!(html.contains("Governance / Readiness"));
+    assert!(html.contains("Pipeline Recap"));
+    assert!(html.contains("Stage Ordering"));
+    assert!(html.contains("Positions"));
+    assert!(html.contains("Open Positions"));
+    assert!(html.contains("Closed Positions Summary"));
+    assert!(html.contains("Realized PnL total"));
+    assert!(html.contains("Operational summary"));
+    assert!(html.contains("Governance"));
     assert!(html.contains("Recent Activity"));
+    assert!(html.contains("Recent Risk Blocks"));
     assert!(html.contains("market-dashboard"));
 
     cleanup(&path);

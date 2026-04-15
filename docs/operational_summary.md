@@ -1,10 +1,11 @@
 # Operational Summary
 
-`generate-operational-summary` produces a compact local artifact for reviewing the latest paper run and current canonical paper state.
+`generate-operational-summary` produces a compact local artifact for reviewing the latest paper run and current canonical paper state. It complements the dashboard and uses the same canonical ledger and latest pipeline recap.
 
 The summary reads existing state only:
 
 - latest pipeline report from `dashboard/latest_pipeline.json` beside the event store
+- operational summary artifact from `operations/latest_summary.json` is also written by `run-paper-pipeline`
 - canonical JSONL events through the paper ledger projection
 - readiness artifact from `var/readiness/confirmation_readiness.json` if present
 - policy file passed with `--policy-file` if present
