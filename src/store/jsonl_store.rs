@@ -10,8 +10,8 @@ use uuid::Uuid;
 use crate::events::{
     validation::{validate_envelope, Validate},
     DecisionFormed, EventEnvelope, EventType, EventTyped, FillReceived, HypothesisGenerated,
-    Linkage, OrderRegistered, OrderSubmitted, Provenance, SignalConfirmed, SignalGenerated,
-    VetoRaised, VetoScope,
+    Linkage, MarketScored, OrderRegistered, OrderSubmitted, Provenance, SignalConfirmed,
+    SignalGenerated, VetoRaised, VetoScope,
 };
 
 use super::error::StoreError;
@@ -84,6 +84,15 @@ impl StoredEvent {
                     Some(payload.signal_id.as_str()),
                     "linkage.signal_id",
                     "payload.signal_id",
+                )?;
+            }
+            EventType::MarketScored => {
+                let payload = self.validate_typed_payload::<MarketScored>()?;
+                validate_matching_ref(
+                    self.aggregate_key.as_deref(),
+                    Some(payload.market_id.as_str()),
+                    "aggregate_key",
+                    "payload.market_id",
                 )?;
             }
             EventType::VetoRaised => {

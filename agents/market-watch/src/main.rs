@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use market_ingestion::{MarketWatchConfig, MarketWatchRunner};
 
-const DEFAULT_BASE_URL: &str = "https://clob.polymarket.com";
+const DEFAULT_BASE_URL: &str = "https://gamma-api.polymarket.com";
 const DEFAULT_STATE_DIR: &str = "./var/market-watch";
 
 fn parse_args() -> Result<MarketWatchConfig, String> {

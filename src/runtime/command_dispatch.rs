@@ -13,7 +13,7 @@ use crate::{
         ConfirmationScorecard, ConfirmationWalkForwardConfig,
     },
     batch_runner::{run_batch, BatchRunOptions},
-    dashboard::{write_dashboard, DashboardConfig},
+    dashboard::{serve_dashboard_http, write_dashboard, DashboardConfig},
     execution::{
         project_paper_ledger, run_paper_decisions, submit_paper_order_and_map_fill,
         CliPolymarketPaperBackend, FixturePolymarketPaperBackend, PaperDecisionRunConfig,
@@ -33,8 +33,9 @@ use crate::{
 
 use super::{
     cli_parser::usage, json_renderer, text_renderer, Command, Config, OutputFormat,
-    PaperPipelineReport, RuntimeError, DEFAULT_OPERATIONAL_SUMMARY_JSON_PATH,
-    DEFAULT_OPERATIONAL_SUMMARY_MARKDOWN_PATH, DEFAULT_READINESS_PATH,
+    PaperPipelineReport, RuntimeError, DEFAULT_DASHBOARD_HOST, DEFAULT_DASHBOARD_PORT,
+    DEFAULT_OPERATIONAL_SUMMARY_JSON_PATH, DEFAULT_OPERATIONAL_SUMMARY_MARKDOWN_PATH,
+    DEFAULT_READINESS_PATH,
 };
 
 pub(crate) fn execute(config: Config) -> Result<String, RuntimeError> {
@@ -521,6 +522,7 @@ fn render_run_paper_pipeline(
     if !config.dry_run {
         write_latest_pipeline_report(config, &report)?;
         write_latest_operational_summary(config)?;
+        write_latest_dashboard(config)?;
     }
 
     match config.format {
@@ -546,6 +548,22 @@ fn render_serve_dashboard(config: &Config) -> Result<String, RuntimeError> {
         pipeline_report_path: latest_pipeline_report_path(config),
         output_path: output_path.clone(),
     };
+    let host = config
+        .dashboard_host
+        .clone()
+        .unwrap_or_else(|| DEFAULT_DASHBOARD_HOST.to_string());
+    let port = config.dashboard_port.unwrap_or(DEFAULT_DASHBOARD_PORT);
+    if config.dashboard_host.is_some() || config.dashboard_port.is_some() {
+        if config.dashboard_host.is_none() || config.dashboard_port.is_none() {
+            return Err(RuntimeError::Usage(
+                "serve-dashboard requires both --host and --port when serving over HTTP\n\n"
+                    .to_string()
+                    + &usage(),
+            ));
+        }
+        serve_dashboard_http(dashboard_config, host, port)?;
+        unreachable!("serve_dashboard_http only returns on error");
+    }
     write_dashboard(&dashboard_config)?;
 
     match config.format {
@@ -637,6 +655,18 @@ fn write_latest_operational_summary(config: &Config) -> Result<(), RuntimeError>
     Ok(())
 }
 
+fn write_latest_dashboard(config: &Config) -> Result<(), RuntimeError> {
+    let dashboard_config = DashboardConfig {
+        store_path: config.store_path.clone(),
+        readiness_path: PathBuf::from(DEFAULT_READINESS_PATH),
+        policy_path: config.policy_file.clone(),
+        pipeline_report_path: latest_pipeline_report_path(config),
+        output_path: latest_dashboard_path(config),
+    };
+    write_dashboard(&dashboard_config)?;
+    Ok(())
+}
+
 fn latest_operational_summary_path(config: &Config) -> PathBuf {
     config
         .store_path
@@ -650,6 +680,14 @@ fn default_operational_summary_path(format: OperationalSummaryFormat) -> PathBuf
         OperationalSummaryFormat::Json => DEFAULT_OPERATIONAL_SUMMARY_JSON_PATH,
         OperationalSummaryFormat::Markdown => DEFAULT_OPERATIONAL_SUMMARY_MARKDOWN_PATH,
     })
+}
+
+fn latest_dashboard_path(config: &Config) -> PathBuf {
+    config
+        .store_path
+        .parent()
+        .map(|parent| parent.join("dashboard/control_room.html"))
+        .unwrap_or_else(|| PathBuf::from(super::DEFAULT_DASHBOARD_PATH))
 }
 
 fn render_show_paper_ledger(
@@ -1200,6 +1238,8 @@ mod tests {
             window_size_seconds: None,
             policy_file: None,
             output_path: None,
+            dashboard_host: None,
+            dashboard_port: None,
             operational_summary_format: crate::OperationalSummaryFormat::Json,
             backend_trades_json: None,
             materialize_readiness: false,

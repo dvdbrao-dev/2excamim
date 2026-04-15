@@ -2,9 +2,10 @@
 """Confirmation Agent v1.
 
 Reads the local JSONL store, finds unconfirmed signals with strength >= threshold,
-and writes `signal.confirmed` events. It first tries the contract CLI command and
-falls back to a direct JSONL append when the current runtime does not expose that
-subcommand yet.
+and writes `signal.confirmed` events. Signals are only eligible when their
+`aggregate_key` matches a `market.scored` event in the same store. It first tries
+the contract CLI command and falls back to a direct JSONL append when the current
+runtime does not expose that subcommand yet.
 """
 
 from __future__ import annotations
@@ -74,16 +75,35 @@ def load_events(store_path: Path) -> list[dict[str, Any]]:
     return events
 
 
+def normalized_market_key(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()
+    if not trimmed:
+        return None
+    if ":" in trimmed:
+        return trimmed.split(":", 1)[1]
+    return trimmed
+
+
 def collect_candidates(
     events: list[dict[str, Any]], threshold: float
-) -> tuple[dict[str, SignalCandidate], set[tuple[str, str]]]:
+) -> tuple[dict[str, SignalCandidate], set[tuple[str, str]], set[str]]:
     generated: dict[str, SignalCandidate] = {}
     confirmed: set[tuple[str, str]] = set()
+    scored_markets: set[str] = set()
 
     for event in events:
         event_type = event.get("event_type")
         payload = event.get("payload") or {}
         linkage = event.get("linkage") or {}
+
+        if event_type == "market.scored":
+            market_id = normalized_market_key(payload.get("market_id")) or normalized_market_key(
+                event.get("aggregate_key")
+            )
+            if isinstance(market_id, str):
+                scored_markets.add(market_id)
 
         if event_type == "signal.generated":
             signal_id = payload.get("signal_id")
@@ -106,7 +126,7 @@ def collect_candidates(
             if isinstance(signal_id, str) and isinstance(confirmed_by, str):
                 confirmed.add((signal_id, confirmed_by))
 
-    return generated, confirmed
+    return generated, confirmed, scored_markets
 
 
 def build_signal_confirmed_event(
@@ -180,13 +200,19 @@ def main() -> int:
     run_id = execution_run_id()
 
     events = load_events(store_path)
-    generated, confirmed = collect_candidates(events, args.threshold)
+    generated, confirmed, scored_markets = collect_candidates(events, args.threshold)
 
+    eligible_candidates = [
+        candidate
+        for candidate in generated.values()
+        if normalized_market_key(candidate.aggregate_key) in scored_markets
+    ]
     to_confirm = [
         candidate
-        for signal_id, candidate in generated.items()
-        if (signal_id, AGENT_ID) not in confirmed
+        for candidate in eligible_candidates
+        if (candidate.signal_id, AGENT_ID) not in confirmed
     ]
+    blocked_by_missing_market_score = len(generated) - len(eligible_candidates)
 
     cli_successes = 0
     appended = 0
@@ -200,18 +226,21 @@ def main() -> int:
 
     print(
         json.dumps(
-            {
-                "actor": AGENT_ID,
-                "producer_run_id": run_id,
-                "store": str(store_path),
-                "threshold": args.threshold,
-                "generated_candidates": len(generated),
-                "already_confirmed": len(generated) - len(to_confirm),
-                "confirmed_via_cli": cli_successes,
-                "confirmed_via_direct_append": appended,
-                "total_confirmed_this_run": cli_successes + appended,
-            },
-            separators=(",", ":"),
+                {
+                    "actor": AGENT_ID,
+                    "producer_run_id": run_id,
+                    "store": str(store_path),
+                    "threshold": args.threshold,
+                    "generated_candidates": len(generated),
+                    "market_scored_markets": len(scored_markets),
+                    "eligible_candidates": len(eligible_candidates),
+                    "blocked_by_missing_market_score": blocked_by_missing_market_score,
+                    "already_confirmed": len(eligible_candidates) - len(to_confirm),
+                    "confirmed_via_cli": cli_successes,
+                    "confirmed_via_direct_append": appended,
+                    "total_confirmed_this_run": cli_successes + appended,
+                },
+                separators=(",", ":"),
         )
     )
     return 0

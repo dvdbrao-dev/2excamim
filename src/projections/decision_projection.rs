@@ -183,7 +183,8 @@ pub fn build_decision_projections(
             }
             RehydratedEvent::HypothesisGenerated(_)
             | RehydratedEvent::SignalGenerated(_)
-            | RehydratedEvent::SignalConfirmed(_) => {}
+            | RehydratedEvent::SignalConfirmed(_)
+            | RehydratedEvent::MarketScored(_) => {}
         }
     }
 

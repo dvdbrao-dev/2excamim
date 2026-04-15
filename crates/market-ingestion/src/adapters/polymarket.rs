@@ -152,7 +152,10 @@ impl<T> PolymarketHttpAdapter<T> {
 
     /// Returns the discovery endpoint URL.
     pub fn discovery_url(&self) -> String {
-        format!("{}/markets", self.base_url.trim_end_matches('/'))
+        format!(
+            "{}/markets?active=true&closed=false&limit=100",
+            self.base_url.trim_end_matches('/')
+        )
     }
 
     /// Returns the activity endpoint URL.
@@ -290,6 +293,21 @@ mod tests {
         let markets = adapter.fetch_discovery().unwrap();
         assert_eq!(markets.len(), 1);
         assert_eq!(markets[0].condition_id, "0xabc");
+    }
+
+    #[test]
+    fn discovery_url_limits_to_hundred_markets() {
+        let adapter = PolymarketHttpAdapter::new(
+            "https://example.test/",
+            FakeHttpClient {
+                response: Err(HttpTransportError::new("unused")),
+            },
+        );
+
+        assert_eq!(
+            adapter.discovery_url(),
+            "https://example.test/markets?active=true&closed=false&limit=100"
+        );
     }
 
     #[test]

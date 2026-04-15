@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "concise": {
+      "source": "o4f6bgpac3/concise",
+      "sourceType": "github",
+      "computedHash": "e87bdb8cb5c562ff43367773fcc8b95e7725ad351ea8ef3394396a1135ecaccb"
+    }
+  }
+}

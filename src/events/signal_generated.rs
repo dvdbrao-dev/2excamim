@@ -11,7 +11,9 @@ use crate::events::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SignalSide {
+    #[serde(alias = "long_yes", alias = "short_no")]
     Long,
+    #[serde(alias = "long_no", alias = "short_yes")]
     Short,
     Flat,
 }

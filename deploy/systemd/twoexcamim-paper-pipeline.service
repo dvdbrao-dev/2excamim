@@ -1,0 +1,7 @@
+[Unit]
+Description=2EXCAMIM paper pipeline run
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/2excamim
+ExecStart=/root/2excamim/target/release/twoexcamim run-paper-pipeline --store /root/2excamim/var/events.jsonl --policy-file /root/2excamim/policies/confirmation_policy.json --backend-trades-json /root/2excamim/var/paper-backend/trades.json --backend-account paper-main --usd-size 100 --materialize-readiness

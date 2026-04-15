@@ -26,3 +26,5 @@ twoexcamim generate-operational-summary \
 ```
 
 After a successful non-dry-run `run-paper-pipeline`, the runtime also writes `operations/latest_summary.json` beside the event store. The artifact is observational only; it does not submit orders, alter risk rules, or create new trading state.
+
+That same pipeline run also refreshes the latest dashboard HTML at `dashboard/control_room.html` so a long-running `serve-dashboard` process always serves current paper-state snapshots.

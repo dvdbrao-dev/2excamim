@@ -4,6 +4,7 @@ pub mod error;
 pub mod fill_received;
 pub mod hypothesis_generated;
 pub mod linkage;
+pub mod market_scored;
 pub mod order_registered;
 pub mod order_submitted;
 pub mod provenance;
@@ -18,6 +19,9 @@ pub use error::EventError;
 pub use fill_received::{FillReceived, FillReceivedPayload, FillSide};
 pub use hypothesis_generated::{HypothesisGenerated, HypothesisGeneratedPayload};
 pub use linkage::Linkage;
+pub use market_scored::{
+    MarketScored, MarketScoredParameters, MarketScoredParametersPayload, MarketScoredPayload,
+};
 pub use order_registered::{OrderRegistered, OrderRegisteredPayload};
 pub use order_submitted::{OrderSubmitted, OrderSubmittedPayload};
 pub use provenance::{Provenance, SourceKind};

@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use twoexcamim::events::{
-    DecisionAction, DecisionFormed, EventEnvelope, EventType, Linkage, Provenance, SignalGenerated,
-    SignalSide, SourceKind,
+    DecisionAction, DecisionFormed, EventEnvelope, EventType, Linkage, MarketScored,
+    MarketScoredParameters, Provenance, SignalGenerated, SignalSide, SourceKind,
 };
 use twoexcamim::store::{JsonlEventStore, StoredEvent};
 
@@ -95,11 +95,53 @@ fn make_decision_event() -> StoredEvent {
     StoredEvent::try_from(envelope).unwrap()
 }
 
+fn make_market_scored_event() -> StoredEvent {
+    let envelope = EventEnvelope::new_market_scored(
+        "scoring-agent-v1",
+        Some("market-1".into()),
+        Linkage::default(),
+        sample_provenance(),
+        MarketScored {
+            market_id: "market-1".into(),
+            scored_on: "2026-04-14".into(),
+            score: 0.82,
+            market_price: 0.59,
+            price_gap_to_half: 0.09,
+            volume_usdc: 60_000.0,
+            hours_to_resolution: 8.0,
+            parameters: MarketScoredParameters {
+                price_gap_limit: 0.07,
+                min_volume_usdc: 50_000.0,
+                min_resolution_hours: 4.0,
+                max_resolution_hours: 168.0,
+            },
+        },
+    )
+    .unwrap();
+
+    StoredEvent::try_from(envelope).unwrap()
+}
+
 #[test]
 fn append_and_read_all_roundtrip() {
     let path = temp_store_path("append-read-all");
     let store = JsonlEventStore::new(&path).unwrap();
     let event = make_signal_event();
+
+    let appended = store.append_event(&event).unwrap();
+    let events = store.read_all().unwrap();
+
+    assert!(appended);
+    assert_eq!(events, vec![event]);
+
+    cleanup(&path);
+}
+
+#[test]
+fn append_and_read_all_roundtrip_market_scored() {
+    let path = temp_store_path("append-read-market-scored");
+    let store = JsonlEventStore::new(&path).unwrap();
+    let event = make_market_scored_event();
 
     let appended = store.append_event(&event).unwrap();
     let events = store.read_all().unwrap();

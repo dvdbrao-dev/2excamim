@@ -25,6 +25,7 @@ impl TimelineEvent for RehydratedEvent {
             Self::HypothesisGenerated(event) => &event.linkage,
             Self::SignalGenerated(event) => &event.linkage,
             Self::SignalConfirmed(event) => &event.linkage,
+            Self::MarketScored(event) => &event.linkage,
             Self::VetoRaised(event) => &event.linkage,
             Self::DecisionFormed(event) => &event.linkage,
             Self::OrderRegistered(event) => &event.linkage,

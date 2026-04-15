@@ -1,3 +1,5 @@
+use std::io::{BufRead, BufReader, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -67,6 +69,90 @@ pub fn write_dashboard(config: &DashboardConfig) -> Result<(), DashboardError> {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(&config.output_path, html)?;
+    Ok(())
+}
+
+pub fn serve_dashboard_http(
+    config: DashboardConfig,
+    host: String,
+    port: u16,
+) -> Result<(), DashboardError> {
+    let listener = TcpListener::bind((host.as_str(), port))?;
+    write_dashboard(&config)?;
+    println!("Serving dashboard at http://{}:{}/", host.as_str(), port);
+
+    loop {
+        match listener.accept() {
+            Ok((stream, _addr)) => {
+                if let Err(error) = handle_dashboard_connection(stream, &config) {
+                    eprintln!("dashboard request failed: {error}");
+                }
+            }
+            Err(error) => return Err(DashboardError::Io(error)),
+        }
+    }
+}
+
+fn handle_dashboard_connection(
+    mut stream: TcpStream,
+    config: &DashboardConfig,
+) -> Result<(), DashboardError> {
+    let request_line = match read_request_line(&mut stream) {
+        Ok(line) => line,
+        Err(error) => {
+            let _ = write_http_response(
+                &mut stream,
+                "500 Internal Server Error",
+                "text/plain; charset=utf-8",
+                "failed to read request",
+            );
+            return Err(error);
+        }
+    };
+    let request_path = request_line.split_whitespace().nth(1).unwrap_or("/");
+    if request_path != "/" && request_path != "/index.html" {
+        write_http_response(
+            &mut stream,
+            "404 Not Found",
+            "text/plain; charset=utf-8",
+            "not found",
+        )?;
+        return Ok(());
+    }
+
+    if let Err(error) = write_dashboard(config) {
+        let _ = write_http_response(
+            &mut stream,
+            "500 Internal Server Error",
+            "text/plain; charset=utf-8",
+            "failed to render dashboard",
+        );
+        return Err(error);
+    }
+    let html = std::fs::read_to_string(&config.output_path)?;
+    write_http_response(&mut stream, "200 OK", "text/html; charset=utf-8", &html)?;
+    Ok(())
+}
+
+fn read_request_line(stream: &mut TcpStream) -> Result<String, DashboardError> {
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let mut request_line = String::new();
+    reader.read_line(&mut request_line)?;
+    Ok(request_line)
+}
+
+fn write_http_response(
+    stream: &mut TcpStream,
+    status: &str,
+    content_type: &str,
+    body: &str,
+) -> Result<(), DashboardError> {
+    let response = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.as_bytes().len()
+    );
+    stream.write_all(response.as_bytes())?;
+    stream.flush()?;
     Ok(())
 }
 

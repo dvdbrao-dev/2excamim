@@ -49,19 +49,31 @@ impl FilesystemSnapshotRepository {
     }
 
     fn write_all(&self, snapshots: &[MarketSnapshot]) -> Result<(), StorageError> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(&self.path)?;
+        let temp_path = temp_store_path(&self.path)?;
 
-        for snapshot in snapshots {
-            serde_json::to_writer(&mut file, snapshot)?;
-            file.write_all(b"\n")?;
+        let result = (|| -> Result<(), StorageError> {
+            let mut file = OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .create(true)
+                .open(&temp_path)?;
+
+            for snapshot in snapshots {
+                serde_json::to_writer(&mut file, snapshot)?;
+                file.write_all(b"\n")?;
+            }
+
+            file.flush()?;
+            file.sync_all()?;
+            std::fs::rename(&temp_path, &self.path)?;
+            Ok(())
+        })();
+
+        if result.is_err() {
+            let _ = std::fs::remove_file(&temp_path);
         }
 
-        file.flush()?;
-        Ok(())
+        result
     }
 }
 
@@ -161,6 +173,15 @@ fn ensure_store_file(path: &Path) -> Result<(), StorageError> {
     Ok(())
 }
 
+fn temp_store_path(path: &Path) -> Result<PathBuf, StorageError> {
+    let file_name = path.file_name().ok_or_else(|| {
+        StorageError::invalid_data("snapshot store path must include a file name")
+    })?;
+    let mut temp_name = file_name.to_os_string();
+    temp_name.push(".tmp");
+    Ok(path.with_file_name(temp_name))
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -215,6 +236,25 @@ mod tests {
 
         let stored = repo.list_snapshots().unwrap();
         assert_eq!(stored, vec![updated]);
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn write_all_uses_temporary_file_and_replaces_target_atomically() {
+        let path = unique_path("snapshot-write-all-atomic");
+        let repo = FilesystemSnapshotRepository::new(&path).unwrap();
+        let snapshot = sample_snapshot("market-1", 0.41, 0.43);
+
+        assert!(repo.upsert_snapshot(&snapshot).unwrap());
+        assert!(path.exists());
+        assert_eq!(repo.list_snapshots().unwrap(), vec![snapshot]);
+
+        let temp_path = path.with_file_name(format!(
+            "{}.tmp",
+            path.file_name().unwrap().to_string_lossy()
+        ));
+        assert!(!temp_path.exists());
+
         fs::remove_file(path).unwrap();
     }
 

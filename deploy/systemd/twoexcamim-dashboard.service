@@ -1,0 +1,14 @@
+[Unit]
+Description=2EXCAMIM dashboard server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/2excamim
+ExecStart=/root/2excamim/target/release/twoexcamim serve-dashboard --store /root/2excamim/var/events.jsonl --policy-file /root/2excamim/policies/confirmation_policy.json --output /root/2excamim/var/dashboard/control_room.html --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

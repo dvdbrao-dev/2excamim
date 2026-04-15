@@ -26,6 +26,8 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError
     let mut window_size_seconds = None;
     let mut policy_file = None;
     let mut output_path = None;
+    let mut dashboard_host = None;
+    let mut dashboard_port = None;
     let mut operational_summary_format = crate::OperationalSummaryFormat::Json;
     let mut backend_trades_json = None;
     let mut materialize_readiness = false;
@@ -127,6 +129,21 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError
             }
             "--output" => {
                 output_path = Some(PathBuf::from(required_flag_value(&mut args, "--output")?));
+            }
+            "--host" => {
+                dashboard_host = Some(required_flag_value(&mut args, "--host")?);
+            }
+            "--port" => {
+                dashboard_port = Some(
+                    required_flag_value(&mut args, "--port")?
+                        .parse::<u16>()
+                        .map_err(|_| {
+                            RuntimeError::Usage(format!(
+                                "invalid numeric value for --port\n\n{}",
+                                usage()
+                            ))
+                        })?,
+                );
             }
             "--format" => {
                 operational_summary_format =
@@ -378,6 +395,8 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError
         usd_size,
         backend_account: required_value(backend_account, "--backend-account")?,
         backend_data_dir,
+        dashboard_host,
+        dashboard_port,
         paper_risk: crate::PaperRiskGuardConfig {
             max_open_positions,
             max_total_notional_exposure,
@@ -393,7 +412,7 @@ pub(crate) fn usage() -> String {
         "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim confirm signals [--store PATH] [--policy-file PATH] [--json]\n  twoexcamim confirm-signals [--store PATH] [--policy-file PATH] [--json]\n  twoexcamim measure-confirmation-outcomes [--store PATH] [--snapshots PATH] [--horizon-seconds N] [--delta-threshold N] [--json]\n  twoexcamim evaluate-confirmation-policy [--store PATH] [--snapshots PATH] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--json]\n  twoexcamim walkforward-confirmation-policy [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--json]\n  twoexcamim propose-confirmation-policy [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--output PATH] [--json]\n  twoexcamim materialize-confirmation-readiness [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--output PATH] [--json]\n  twoexcamim simulate-paper-fill --order-id ID --decision-id ID --market SLUG --outcome OUTCOME --side <buy|sell> --amount-usd N [--backend-account NAME] [--backend-data-dir PATH] [--backend-trades-json PATH] [--store PATH] [--dry-run] [--json]\n  twoexcamim run-paper-decisions [--store PATH] [--backend-account NAME] [--backend-data-dir PATH] [--backend-trades-json PATH] [--usd-size N] [--max-open-positions N] [--max-total-notional-exposure N] [--max-exposure-per-market N] [--max-orders-per-market N] [--block-same-market-same-outcome-if-open] [--dry-run] [--json]\n  twoexcamim run-paper-pipeline [--research-signals PATH] [--store PATH] [--policy-file PATH] [--backend-account NAME] [--backend-data-dir PATH] [--backend-trades-json PATH] [--usd-size N] [--max-open-positions N] [--max-total-notional-exposure N] [--max-exposure-per-market N] [--max-orders-per-market N] [--block-same-market-same-outcome-if-open] [--materialize-readiness] [--dry-run] [--json]\n  twoexcamim generate-operational-summary [--store PATH] [--policy-file PATH] [--output PATH] [--format json|markdown] [--json]\n  twoexcamim show-paper-ledger [--store PATH] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize orders [--store PATH] [--dry-run] [--json]\n  twoexcamim submit orders [--store PATH] [--dry-run] [--json]\n  twoexcamim observe fill --fill-id ID --order-id ID --side <buy|sell> --quantity N --price N --executed-at RFC3339 [--decision-id ID] [--instrument VALUE] [--venue VALUE] [--store PATH] [--dry-run] [--json]\n  twoexcamim run batch --research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim confirm-signals --store ./var/events.jsonl --policy-file ./policies/confirmation_policy.json\n  twoexcamim measure-confirmation-outcomes --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --json\n  twoexcamim evaluate-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --horizons 3600,7200 --confidence-thresholds 0.5,0.6,0.7 --json\n  twoexcamim walkforward-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --horizons 3600,7200 --confidence-thresholds 0.5,0.6,0.7 --json\n  twoexcamim propose-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --confidence-thresholds 0.5,0.6,0.7 --output ./policies/proposed_confirmation_policy.json\n  twoexcamim materialize-confirmation-readiness --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --output ./var/readiness/confirmation_readiness.json\n  twoexcamim simulate-paper-fill --order-id ord-1 --decision-id dec-1 --market will-bitcoin-hit-100k --outcome yes --side buy --amount-usd 100 --backend-trades-json ./tests/fixtures/polymarket_trades.json --json\n  twoexcamim run-paper-decisions --store ./var/events.jsonl --backend-trades-json ./tests/fixtures/polymarket_trades.json --usd-size 100 --max-open-positions 5 --max-exposure-per-market 250 --json\n  twoexcamim run-paper-pipeline --store ./var/events.jsonl --backend-trades-json ./tests/fixtures/polymarket_trades.json --usd-size 100 --json\n  twoexcamim generate-operational-summary --store ./var/events.jsonl --output ./var/operations/latest_summary.md --format markdown\n  twoexcamim show-paper-ledger --store ./var/events.jsonl --json\n  twoexcamim materialize decisions --dry-run --json\n  twoexcamim materialize orders --dry-run --json\n  twoexcamim submit orders --dry-run --json\n  twoexcamim observe fill --fill-id fill-1 --order-id ord-1 --side buy --quantity 1 --price 0.54 --executed-at 2026-04-07T00:00:00Z --dry-run\n  twoexcamim run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run\n\nDefault store path: {DEFAULT_STORE_PATH}\nDefault snapshots path: {DEFAULT_SNAPSHOTS_PATH}"
     );
     format!(
-        "{base}\n\nDashboard:\n  twoexcamim serve-dashboard [--store PATH] [--policy-file PATH] [--output PATH] [--json]\n\nDashboard example:\n  twoexcamim serve-dashboard --store ./var/events.jsonl --policy-file ./policies/confirmation_policy.json --output ./var/dashboard/control_room.html"
+        "{base}\n\nDashboard:\n  twoexcamim serve-dashboard [--store PATH] [--policy-file PATH] [--output PATH] [--host HOST] [--port PORT] [--json]\n\nDashboard example:\n  twoexcamim serve-dashboard --store ./var/events.jsonl --policy-file ./policies/confirmation_policy.json --output ./var/dashboard/control_room.html --host 0.0.0.0 --port 8000"
     )
 }
 

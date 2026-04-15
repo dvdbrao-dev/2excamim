@@ -147,6 +147,7 @@ pub fn build_signal_projections(
                 projection.last_event_type = EventType::DecisionFormed;
             }
             RehydratedEvent::HypothesisGenerated(_)
+            | RehydratedEvent::MarketScored(_)
             | RehydratedEvent::OrderRegistered(_)
             | RehydratedEvent::OrderSubmitted(_)
             | RehydratedEvent::FillReceived(_) => {}

@@ -1,5 +1,8 @@
+use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::Utc;
@@ -235,6 +238,22 @@ fn run_cli(path: &Path, args: &[&str]) -> std::process::Output {
 fn run_cli_raw(args: &[&str]) -> std::process::Output {
     let binary = env!("CARGO_BIN_EXE_twoexcamim");
     Command::new(binary).args(args).output().unwrap()
+}
+
+fn free_tcp_port() -> std::io::Result<u16> {
+    Ok(std::net::TcpListener::bind("127.0.0.1:0")?
+        .local_addr()?
+        .port())
+}
+
+fn fetch_http_response(host: &str, port: u16, path: &str) -> String {
+    let mut stream = TcpStream::connect((host, port)).unwrap();
+    let request =
+        format!("GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nConnection: close\r\n\r\n");
+    stream.write_all(request.as_bytes()).unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    response
 }
 
 fn write_snapshot(path: &Path, minutes_after: i64, price: f64) {
@@ -1665,8 +1684,14 @@ fn cli_run_paper_pipeline_json_reports_ordered_stages_and_persists_fill_once() {
         .unwrap()
         .join("operations/latest_summary.json");
     let summary: Value = serde_json::from_slice(&std::fs::read(&latest_summary).unwrap()).unwrap();
+    let latest_dashboard = path.parent().unwrap().join("dashboard/control_room.html");
+    let dashboard_html = std::fs::read_to_string(&latest_dashboard).unwrap();
     assert_eq!(summary["pipeline"]["fills_persisted"], 1);
     assert_eq!(summary["paper"]["open_positions"], 1);
+    assert!(dashboard_html.contains("2EXCAMIM Control Room"));
+    assert!(dashboard_html.contains("Pipeline Recap"));
+    assert!(dashboard_html.contains("Stage Ordering"));
+    assert!(dashboard_html.contains("market-pipeline"));
 
     let second = run_cli_raw(&[
         "run-paper-pipeline",
@@ -1699,6 +1724,7 @@ fn cli_run_paper_pipeline_json_reports_ordered_stages_and_persists_fill_once() {
     cleanup(&path);
     cleanup(&trades_path);
     cleanup(&latest_summary);
+    cleanup(&latest_dashboard);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1853,6 +1879,109 @@ fn cli_serve_dashboard_writes_static_control_room() {
         .unwrap()
         .join("dashboard/latest_pipeline.json");
     cleanup(&latest);
+    let latest_summary = path
+        .parent()
+        .unwrap()
+        .join("operations/latest_summary.json");
+    cleanup(&latest_summary);
+}
+
+#[test]
+#[ignore]
+fn cli_serve_dashboard_http_serves_control_room_over_tcp() {
+    let path = temp_store_path("serve-dashboard-http");
+    let trades_path = temp_aux_path("serve-dashboard-http-trades", "json");
+    let store = JsonlEventStore::new(&path).unwrap();
+    append_pipeline_signal(
+        &store,
+        "sig-dashboard-http",
+        "market-dashboard-http",
+        SignalSide::Long,
+        0.9,
+    );
+    write_pipeline_trades(&trades_path, "market-dashboard-http", "yes");
+
+    let pipeline = run_cli_raw(&[
+        "run-paper-pipeline",
+        "--store",
+        path.to_str().unwrap(),
+        "--backend-trades-json",
+        trades_path.to_str().unwrap(),
+        "--json",
+    ]);
+    assert!(pipeline.status.success());
+
+    let port = match free_tcp_port() {
+        Ok(port) => port,
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            cleanup(&path);
+            cleanup(&trades_path);
+            return;
+        }
+        Err(error) => panic!("failed to reserve tcp port: {error}"),
+    };
+    let binary = env!("CARGO_BIN_EXE_twoexcamim");
+    let mut child = Command::new(binary)
+        .args([
+            "serve-dashboard",
+            "--store",
+            path.to_str().unwrap(),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            &port.to_string(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    for _ in 0..100 {
+        if let Some(_status) = child.try_wait().unwrap() {
+            cleanup(&path);
+            cleanup(&trades_path);
+            let latest = path.parent().unwrap().join("dashboard/control_room.html");
+            cleanup(&latest);
+            let latest_pipeline = path
+                .parent()
+                .unwrap()
+                .join("dashboard/latest_pipeline.json");
+            cleanup(&latest_pipeline);
+            let latest_summary = path
+                .parent()
+                .unwrap()
+                .join("operations/latest_summary.json");
+            cleanup(&latest_summary);
+            return;
+        }
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+
+    let response = fetch_http_response("127.0.0.1", port, "/");
+    let not_found = fetch_http_response("127.0.0.1", port, "/missing");
+
+    child.kill().unwrap();
+    let _ = child.wait();
+
+    assert!(response.contains("HTTP/1.1 200 OK"));
+    assert!(response.contains("Content-Type: text/html; charset=utf-8"));
+    assert!(response.contains("2EXCAMIM Control Room"));
+    assert!(response.contains("Pipeline Recap"));
+    assert!(response.contains("market-dashboard-http"));
+    assert!(not_found.contains("HTTP/1.1 404 Not Found"));
+
+    cleanup(&path);
+    cleanup(&trades_path);
+    let latest = path.parent().unwrap().join("dashboard/control_room.html");
+    cleanup(&latest);
+    let latest_pipeline = path
+        .parent()
+        .unwrap()
+        .join("dashboard/latest_pipeline.json");
+    cleanup(&latest_pipeline);
     let latest_summary = path
         .parent()
         .unwrap()

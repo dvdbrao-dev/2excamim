@@ -29,6 +29,8 @@ pub(crate) const DEFAULT_STORE_PATH: &str = "./var/events.jsonl";
 pub(crate) const DEFAULT_SNAPSHOTS_PATH: &str = "./var/market_snapshots.jsonl";
 pub(crate) const DEFAULT_READINESS_PATH: &str = "./var/readiness/confirmation_readiness.json";
 pub(crate) const DEFAULT_DASHBOARD_PATH: &str = "./var/dashboard/control_room.html";
+pub(crate) const DEFAULT_DASHBOARD_HOST: &str = "127.0.0.1";
+pub(crate) const DEFAULT_DASHBOARD_PORT: u16 = 8000;
 pub(crate) const DEFAULT_OPERATIONAL_SUMMARY_JSON_PATH: &str =
     "./var/operations/latest_summary.json";
 pub(crate) const DEFAULT_OPERATIONAL_SUMMARY_MARKDOWN_PATH: &str =
@@ -109,6 +111,8 @@ pub(crate) struct Config {
     pub(crate) window_size_seconds: Option<i64>,
     pub(crate) policy_file: Option<PathBuf>,
     pub(crate) output_path: Option<PathBuf>,
+    pub(crate) dashboard_host: Option<String>,
+    pub(crate) dashboard_port: Option<u16>,
     pub(crate) operational_summary_format: OperationalSummaryFormat,
     pub(crate) backend_trades_json: Option<PathBuf>,
     pub(crate) materialize_readiness: bool,

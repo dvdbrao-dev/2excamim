@@ -1,0 +1,11 @@
+[Unit]
+Description=Schedule 2EXCAMIM paper pipeline runs
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+Unit=twoexcamim-paper-pipeline.service
+
+[Install]
+WantedBy=timers.target

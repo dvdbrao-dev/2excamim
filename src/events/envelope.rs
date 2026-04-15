@@ -8,6 +8,7 @@ use crate::events::{
     fill_received::FillReceived,
     hypothesis_generated::HypothesisGenerated,
     linkage::Linkage,
+    market_scored::MarketScored,
     order_registered::OrderRegistered,
     order_submitted::OrderSubmitted,
     provenance::Provenance,
@@ -25,6 +26,8 @@ pub enum EventType {
     SignalGenerated,
     #[serde(rename = "signal.confirmed")]
     SignalConfirmed,
+    #[serde(rename = "market.scored")]
+    MarketScored,
     #[serde(rename = "veto.raised")]
     VetoRaised,
     #[serde(rename = "decision.formed")]
@@ -43,6 +46,7 @@ impl EventType {
             Self::HypothesisGenerated => "hypothesis.generated",
             Self::SignalGenerated => "signal.generated",
             Self::SignalConfirmed => "signal.confirmed",
+            Self::MarketScored => "market.scored",
             Self::VetoRaised => "veto.raised",
             Self::DecisionFormed => "decision.formed",
             Self::OrderRegistered => "order.registered",
@@ -135,6 +139,18 @@ impl EventEnvelope<SignalConfirmed> {
         linkage: Linkage,
         provenance: Provenance,
         payload: SignalConfirmed,
+    ) -> Result<Self, EventError> {
+        Self::build(produced_by, aggregate_key, linkage, provenance, payload)
+    }
+}
+
+impl EventEnvelope<MarketScored> {
+    pub fn new_market_scored(
+        produced_by: impl Into<String>,
+        aggregate_key: Option<String>,
+        linkage: Linkage,
+        provenance: Provenance,
+        payload: MarketScored,
     ) -> Result<Self, EventError> {
         Self::build(produced_by, aggregate_key, linkage, provenance, payload)
     }

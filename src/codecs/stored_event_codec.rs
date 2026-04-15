@@ -4,7 +4,8 @@ use crate::{
     codecs::CodecError,
     events::{
         DecisionFormed, EventEnvelope, EventType, EventTyped, FillReceived, HypothesisGenerated,
-        OrderRegistered, OrderSubmitted, SignalConfirmed, SignalGenerated, Validate, VetoRaised,
+        MarketScored, OrderRegistered, OrderSubmitted, SignalConfirmed, SignalGenerated, Validate,
+        VetoRaised,
     },
     store::StoredEvent,
 };
@@ -14,6 +15,7 @@ pub enum RehydratedEvent {
     HypothesisGenerated(EventEnvelope<HypothesisGenerated>),
     SignalGenerated(EventEnvelope<SignalGenerated>),
     SignalConfirmed(EventEnvelope<SignalConfirmed>),
+    MarketScored(EventEnvelope<MarketScored>),
     VetoRaised(EventEnvelope<VetoRaised>),
     DecisionFormed(EventEnvelope<DecisionFormed>),
     OrderRegistered(EventEnvelope<OrderRegistered>),
@@ -27,6 +29,7 @@ impl RehydratedEvent {
             Self::HypothesisGenerated(_) => EventType::HypothesisGenerated,
             Self::SignalGenerated(_) => EventType::SignalGenerated,
             Self::SignalConfirmed(_) => EventType::SignalConfirmed,
+            Self::MarketScored(_) => EventType::MarketScored,
             Self::VetoRaised(_) => EventType::VetoRaised,
             Self::DecisionFormed(_) => EventType::DecisionFormed,
             Self::OrderRegistered(_) => EventType::OrderRegistered,
@@ -46,6 +49,7 @@ impl TryFrom<StoredEvent> for RehydratedEvent {
             }
             EventType::SignalGenerated => Ok(Self::SignalGenerated(rehydrate_envelope(value)?)),
             EventType::SignalConfirmed => Ok(Self::SignalConfirmed(rehydrate_envelope(value)?)),
+            EventType::MarketScored => Ok(Self::MarketScored(rehydrate_envelope(value)?)),
             EventType::VetoRaised => Ok(Self::VetoRaised(rehydrate_envelope(value)?)),
             EventType::DecisionFormed => Ok(Self::DecisionFormed(rehydrate_envelope(value)?)),
             EventType::OrderRegistered => Ok(Self::OrderRegistered(rehydrate_envelope(value)?)),
@@ -71,6 +75,7 @@ impl TryFrom<&RehydratedEvent> for StoredEvent {
             RehydratedEvent::HypothesisGenerated(event) => Self::try_from(event),
             RehydratedEvent::SignalGenerated(event) => Self::try_from(event),
             RehydratedEvent::SignalConfirmed(event) => Self::try_from(event),
+            RehydratedEvent::MarketScored(event) => Self::try_from(event),
             RehydratedEvent::VetoRaised(event) => Self::try_from(event),
             RehydratedEvent::DecisionFormed(event) => Self::try_from(event),
             RehydratedEvent::OrderRegistered(event) => Self::try_from(event),
