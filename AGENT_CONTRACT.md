@@ -40,10 +40,11 @@ No necesita ser Rust. Puede ser Python, bash, o cualquier proceso que llame a la
 | Agente | Evento que produce | Comando CLI | Estado |
 |---|---|---|---|
 | `confirmation-agent-v1` | `signal.confirmed` | `cargo run -- confirm signal` | ✅ ACTIVO |
+| `probability-agent-v1` | `signal.confirmed` / `veto.raised` | `python3 agents/probability_agent.py` | ✅ ACTIVO |
 | `veto-agent-v1` | `veto.raised` | `cargo run -- veto signal` | ✅ ACTIVO |
 | `sizing-agent-v1` | `decision.formed` o `veto.raised` | `python3 agents/sizing_agent.py` | ✅ ACTIVO |
 
-**Estos cuatro agentes ya cubren el tramo mínimo de confirmación, veto, sizing y salida.**
+**Estos cinco agentes ya cubren el tramo mínimo de confirmación, probabilidad, veto, sizing y salida.**
 
 ### Fase siguiente (no empezar hasta resolver la anterior)
 
@@ -100,6 +101,7 @@ Actualizar esta tabla cuando un agente pase a producción:
 | Agente | Versión | Lenguaje | Ruta | Estado | Fecha |
 |---|---|---|---|---|---|
 | confirmation-agent-v1 | v1 | Python | agents/confirmation_agent.py | ✅ ACTIVO | 2026-04-08 |
+| probability-agent-v1 | v1 | Python | agents/probability_agent.py | ✅ ACTIVO | 2026-04-16 |
 | veto-agent-v1 | v1 | Python | agents/veto_agent.py | ✅ ACTIVO | 2026-04-15 |
 | sizing-agent-v1 | v1 | Python | agents/sizing_agent.py | ✅ ACTIVO | 2026-04-15 |
 | exit-agent-v1 | v1 | Python | agents/exit_agent.py | ✅ ACTIVO | 2026-04-15 |
