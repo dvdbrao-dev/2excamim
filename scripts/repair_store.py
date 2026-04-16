@@ -1,6 +1,9 @@
-import json, pathlib, re, sys
-
+import pathlib
 pathlib.Path("var/market-watch/raw").mkdir(parents=True, exist_ok=True)
+if not pathlib.Path("var/market-watch/raw/polymarket-discovery.jsonl").exists():
+    pathlib.Path("var/market-watch/raw/polymarket-discovery.jsonl").write_text("")
+
+import json, re, sys
 
 
 def repair_jsonl(path: pathlib.Path) -> int:
