@@ -1,0 +1,173 @@
+{
+  "updated": "2026-04-16 16:20 UTC",
+  "bot": {
+    "name": "EXCAMIM",
+    "emoji": "\u26a1",
+    "status": "online"
+  },
+  "alerts": [],
+  "costs": {
+    "today_usd": 0.0352,
+    "today_eur": 0.0324,
+    "monthly_est_usd": 0.07,
+    "per_signal": 5.5e-05,
+    "signals_processed": 645
+  },
+  "pipeline": {
+    "market.scored": 14,
+    "signal.generated": 1066,
+    "signal.confirmed": 1188,
+    "veto.raised": 91,
+    "decision.formed": 8
+  },
+  "decisions": [
+    {
+      "market": "0xf7b5491e70b477d451",
+      "size": 250.0,
+      "occurred": "2026-04-16 12:55",
+      "status": "ACTIVE"
+    },
+    {
+      "market": "0xbdd688664b4f3cf7ec",
+      "size": 250.0,
+      "occurred": "2026-04-16 12:55",
+      "status": "ACTIVE"
+    },
+    {
+      "market": "0x13e1cc703a120883a7",
+      "size": 250.0,
+      "occurred": "2026-04-16 12:55",
+      "status": "ACTIVE"
+    },
+    {
+      "market": "0xb6b3d7a2037b3faa7e",
+      "size": 250.0,
+      "occurred": "2026-04-16 12:55",
+      "status": "ACTIVE"
+    },
+    {
+      "market": "0xfc6260666d020a912a",
+      "size": 250.0,
+      "occurred": "2026-04-16 12:55",
+      "status": "ACTIVE"
+    },
+    {
+      "market": "0x7976b8dbacf9077eb1",
+      "size": 250.0,
+      "occurred": "2026-04-16 12:55",
+      "status": "ACTIVE"
+    },
+    {
+      "market": "0x375409bc5eeeff961e",
+      "size": 250.0,
+      "occurred": "2026-04-16 12:55",
+      "status": "ACTIVE"
+    },
+    {
+      "market": "0x9b6fef249040fd17e9",
+      "size": 250.0,
+      "occurred": "2026-04-16 12:55",
+      "status": "ACTIVE"
+    }
+  ],
+  "agents": [
+    {
+      "name": "market-watch",
+      "lang": "Rust",
+      "status": "active",
+      "role": "Data ingestion"
+    },
+    {
+      "name": "signal-agent",
+      "lang": "Python",
+      "status": "active",
+      "role": "Signal generation"
+    },
+    {
+      "name": "scoring-agent",
+      "lang": "Python",
+      "status": "active",
+      "role": "Market scoring"
+    },
+    {
+      "name": "confirmation-agent",
+      "lang": "Python",
+      "status": "active",
+      "role": "Signal confirmation"
+    },
+    {
+      "name": "probability-agent",
+      "lang": "Python",
+      "status": "active",
+      "role": "LLM (gpt-4o-mini)"
+    },
+    {
+      "name": "veto-agent",
+      "lang": "Python",
+      "status": "active",
+      "role": "Risk veto"
+    },
+    {
+      "name": "sizing-agent",
+      "lang": "Python",
+      "status": "active",
+      "role": "Kelly sizing"
+    },
+    {
+      "name": "exit-agent",
+      "lang": "Python",
+      "status": "active",
+      "role": "Exit triggers"
+    },
+    {
+      "name": "telegram-agent",
+      "lang": "Python",
+      "status": "active",
+      "role": "Notifications"
+    }
+  ],
+  "timers": [
+    {
+      "name": "llm-health",
+      "next": "Thu 2026-04-16",
+      "status": "active"
+    },
+    {
+      "name": "disk-guard",
+      "next": "Thu 2026-04-16",
+      "status": "active"
+    },
+    {
+      "name": "dns-watchdog",
+      "next": "Thu 2026-04-16",
+      "status": "active"
+    },
+    {
+      "name": "excamim-daily",
+      "next": "Fri 2026-04-17",
+      "status": "active"
+    },
+    {
+      "name": "market-watch",
+      "next": "- -",
+      "status": "active"
+    }
+  ],
+  "git_log": [
+    "9d42609 fix: repair_store creates raw dir, telegram spam prevention",
+    "d8c1bce fix: tolerant snapshot validation - skip invalid lines instead of abort",
+    "e9c85c7 chore: remove telegram runtime state",
+    "4abfc3c feat: telegram notifications - signals, decisions, PnL, LLM cost, alerts",
+    "354aff0 feat: full resilience system - dns watchdog, llm alarm, disk guard, daily health",
+    "6c5eb40 chore: session 3 complete - stable pipeline, clean edge analysis",
+    "6f25ab3 fix: create parent dir before temp file in write_all",
+    "32370ac fix: definitive store repair - repair_store.py, atomic write validation"
+  ],
+  "system": {
+    "disk_pct": 40,
+    "events_total": 2367,
+    "decisions_total": 8,
+    "vetos_total": 91,
+    "signals_total": 1066
+  }
+}
