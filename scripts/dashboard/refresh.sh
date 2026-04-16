@@ -58,6 +58,15 @@ def format_day(value):
     return value.strftime("%Y-%m-%d")
 
 
+def format_week(value):
+    iso = value.isocalendar()
+    return f"{iso.year:04d}-W{iso.week:02d}"
+
+
+def format_month(value):
+    return f"{value.year:04d}-{value.month:02d}"
+
+
 lines = events_path.read_text().splitlines() if events_path.exists() else []
 market_titles = load_market_titles(snapshots_paths)
 
@@ -67,9 +76,11 @@ active_decisions = []
 closed_decisions = []
 vetoed_signals = []
 signal_confirmations = {}
-decision_rows = {}
+decision_rows_by_market = {}
 decision_veto_rows = {}
 cost_by_day = collections.Counter()
+cost_by_week = collections.Counter()
+cost_by_month = collections.Counter()
 llm_cost_today = 0.0
 llm_cost_week = 0.0
 llm_cost_all = 0.0
@@ -116,6 +127,8 @@ for raw in lines:
             if occurred_at >= week_start:
                 llm_signals_week += 1
             cost_by_day[format_day(occurred_at)] += cost
+            cost_by_week[format_week(occurred_at)] += cost
+            cost_by_month[format_month(occurred_at)] += cost
 
         if et == "signal.confirmed":
             signal_id = linkage.get("signal_id") or payload.get("signal_id")
@@ -142,9 +155,11 @@ for raw in lines:
         decision_id = payload.get("decision_id") or linkage.get("decision_id")
         signal_id = linkage.get("signal_id") or payload.get("signal_id")
         size_hint = safe_float(payload.get("size_hint", 0.0))
+        market_key = aggregate_key if isinstance(aggregate_key, str) and aggregate_key else decision_id or signal_id or ""
         signal_info = signal_confirmations.get(signal_id, {})
-        decision_rows[decision_id] = {
+        decision_row = {
             "decision_id": decision_id,
+            "aggregate_key": market_key,
             "signal_id": signal_id,
             "title": signal_info.get("title", title),
             "market": signal_info.get("market_id", market_id),
@@ -160,6 +175,12 @@ for raw in lines:
             "status": "ACTIVE",
             "size_hint": size_hint,
         }
+        current = decision_rows_by_market.get(market_key)
+        if current is None or (
+            occurred_at is not None
+            and (current.get("occurred_dt") is None or occurred_at >= current["occurred_dt"])
+        ):
+            decision_rows_by_market[market_key] = decision_row
 
     if et == "veto.raised" and payload.get("scope") == "Decision":
         target_id = payload.get("target_id")
@@ -169,7 +190,8 @@ for raw in lines:
                 "occurred": occurred_at,
             }
 
-for decision in decision_rows.values():
+decision_sort_key = lambda item: item.get("occurred_dt") or datetime.min.replace(tzinfo=timezone.utc)
+for decision in sorted(decision_rows_by_market.values(), key=decision_sort_key):
     veto = decision_veto_rows.get(decision["decision_id"])
     if veto and (decision.get("occurred_dt") is None or (veto["occurred"] and veto["occurred"] >= decision.get("occurred_dt"))):
         closed_decisions.append({
@@ -180,13 +202,18 @@ for decision in decision_rows.values():
     else:
         active_decisions.append({k: v for k, v in decision.items() if k != "occurred_dt"})
 
-active_decisions = active_decisions[-8:]
-closed_decisions = closed_decisions[-8:]
+decisions_by_market = {}
+for decision in active_decisions:
+    key = decision.get("aggregate_key") or decision.get("market") or decision.get("decision_id") or ""
+    decisions_by_market[key] = decision["size_hint"]
+
+active_decisions_display = active_decisions[-8:]
+closed_decisions_display = closed_decisions[-8:]
 vetoed_signals = vetoed_signals[-20:]
 vetoed_signals.reverse()
 
 bankroll_total = 1000.0
-deployed_usd = round(sum(item["size_hint"] for item in active_decisions), 2)
+deployed_usd = round(sum(decisions_by_market.values()), 2)
 deployed_pct = round((deployed_usd / bankroll_total) * 100 if bankroll_total else 0.0, 2)
 deployed_eur = round(deployed_usd * 0.92, 2)
 available_usd = round(bankroll_total - deployed_usd, 2)
@@ -278,9 +305,32 @@ data = {
         "per_signal": round(llm_cost_today / max(1, llm_signals_today), 6),
         "signals_processed": llm_signals_today,
     },
+    "cost_chart": {
+        "daily": [
+            {
+                "date": (today - timedelta(days=offset)).isoformat(),
+                "cost": round(float(cost_by_day.get((today - timedelta(days=offset)).isoformat(), 0.0)), 6),
+            }
+            for offset in range(13, -1, -1)
+        ],
+        "weekly": [
+            {
+                "week": format_week(now - timedelta(days=7 * offset)),
+                "cost": round(float(cost_by_week.get(format_week(now - timedelta(days=7 * offset)), 0.0)), 6),
+            }
+            for offset in range(7, -1, -1)
+        ],
+        "monthly": [
+            {
+                "month": f"{((today.year * 12 + today.month - 1 - offset) // 12):04d}-{((today.year * 12 + today.month - 1 - offset) % 12) + 1:02d}",
+                "cost": round(float(cost_by_month.get(f"{((today.year * 12 + today.month - 1 - offset) // 12):04d}-{((today.year * 12 + today.month - 1 - offset) % 12) + 1:02d}", 0.0)), 6),
+            }
+            for offset in range(5, -1, -1)
+        ],
+    },
     "pipeline": dict(eventos),
-    "decisions": active_decisions,
-    "closed_decisions": closed_decisions,
+    "decisions": active_decisions_display,
+    "closed_decisions": closed_decisions_display,
     "vetoed_signals": vetoed_signals,
     "agents": agents,
     "timers": timers,

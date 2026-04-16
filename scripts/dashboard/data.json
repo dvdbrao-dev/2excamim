@@ -1,5 +1,5 @@
 {
-  "updated": "2026-04-16 16:39 UTC",
+  "updated": "2026-04-16 17:02 UTC",
   "bot": {
     "name": "EXCAMIM",
     "emoji": "\u26a1",
@@ -15,24 +15,145 @@
     "available_eur": -920.0
   },
   "costs": {
-    "today_usd": 0.0366,
-    "today_eur": 0.0336,
-    "weekly_usd": 0.0366,
-    "weekly_eur": 0.0336,
+    "today_usd": 0.0387,
+    "today_eur": 0.0356,
+    "weekly_usd": 0.0387,
+    "weekly_eur": 0.0356,
     "monthly_est_usd": 0.07,
     "per_signal": 5.5e-05,
-    "signals_processed": 670
+    "signals_processed": 710
+  },
+  "cost_chart": {
+    "daily": [
+      {
+        "date": "2026-04-03",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-04",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-05",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-06",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-07",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-08",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-09",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-10",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-11",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-12",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-13",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-14",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-15",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-16",
+        "cost": 0.038697
+      }
+    ],
+    "weekly": [
+      {
+        "week": "2026-W09",
+        "cost": 0.0
+      },
+      {
+        "week": "2026-W10",
+        "cost": 0.0
+      },
+      {
+        "week": "2026-W11",
+        "cost": 0.0
+      },
+      {
+        "week": "2026-W12",
+        "cost": 0.0
+      },
+      {
+        "week": "2026-W13",
+        "cost": 0.0
+      },
+      {
+        "week": "2026-W14",
+        "cost": 0.0
+      },
+      {
+        "week": "2026-W15",
+        "cost": 0.0
+      },
+      {
+        "week": "2026-W16",
+        "cost": 0.038697
+      }
+    ],
+    "monthly": [
+      {
+        "month": "2025-11",
+        "cost": 0.0
+      },
+      {
+        "month": "2025-12",
+        "cost": 0.0
+      },
+      {
+        "month": "2026-01",
+        "cost": 0.0
+      },
+      {
+        "month": "2026-02",
+        "cost": 0.0
+      },
+      {
+        "month": "2026-03",
+        "cost": 0.0
+      },
+      {
+        "month": "2026-04",
+        "cost": 0.038697
+      }
+    ]
   },
   "pipeline": {
     "market.scored": 14,
-    "signal.generated": 1105,
-    "signal.confirmed": 1234,
-    "veto.raised": 94,
+    "signal.generated": 1170,
+    "signal.confirmed": 1308,
+    "veto.raised": 100,
     "decision.formed": 8
   },
   "decisions": [
     {
       "decision_id": "decision-research-0xf7b5491e70b477d451afe7d9c1fde4bf1a927e69ff289d294b96df164f6c10f0-vwap_reversion-20260415T232611_636Z-long_yes",
+      "aggregate_key": "polymarket:0xf7b5491e70b477d451afe7d9c1fde4bf1a927e69ff289d294b96df164f6c10f0",
       "signal_id": "research-0xf7b5491e70b477d451afe7d9c1fde4bf1a927e69ff289d294b96df164f6c10f0-vwap_reversion-20260415T232611_636Z-long_yes",
       "title": "Will the Carolina Hurricanes win the 2026 NHL Stanley Cup?",
       "market": "0xf7b5491e70b477d451afe7d9c1fde4bf1a927e69ff289d294b96df164f6c10f0",
@@ -49,6 +170,7 @@
     },
     {
       "decision_id": "decision-research-0xbdd688664b4f3cf7ec4ec011607934fe8ae720c08353fc14a6e9dfbf6bbcf11a-vwap_reversion-20260415T232611_636Z-long_yes",
+      "aggregate_key": "polymarket:0xbdd688664b4f3cf7ec4ec011607934fe8ae720c08353fc14a6e9dfbf6bbcf11a",
       "signal_id": "research-0xbdd688664b4f3cf7ec4ec011607934fe8ae720c08353fc14a6e9dfbf6bbcf11a-vwap_reversion-20260415T232611_636Z-long_yes",
       "title": "Will the Tampa Bay Lightning win the 2026 NHL Stanley Cup?",
       "market": "0xbdd688664b4f3cf7ec4ec011607934fe8ae720c08353fc14a6e9dfbf6bbcf11a",
@@ -65,6 +187,7 @@
     },
     {
       "decision_id": "decision-research-0x13e1cc703a120883a709d3bb29707097952845d61ca6793ea2b4328bae2a7451-vwap_reversion-20260415T232611_636Z-long_yes",
+      "aggregate_key": "polymarket:0x13e1cc703a120883a709d3bb29707097952845d61ca6793ea2b4328bae2a7451",
       "signal_id": "research-0x13e1cc703a120883a709d3bb29707097952845d61ca6793ea2b4328bae2a7451-vwap_reversion-20260415T232611_636Z-long_yes",
       "title": "Will the Boston Celtics win the 2026 NBA Finals?",
       "market": "0x13e1cc703a120883a709d3bb29707097952845d61ca6793ea2b4328bae2a7451",
@@ -81,6 +204,7 @@
     },
     {
       "decision_id": "decision-research-0xb6b3d7a2037b3faa7e1306d741840d453432902d73cc9a146a035e40271eae73-vwap_reversion-20260415T232611_636Z-long_yes",
+      "aggregate_key": "polymarket:0xb6b3d7a2037b3faa7e1306d741840d453432902d73cc9a146a035e40271eae73",
       "signal_id": "research-0xb6b3d7a2037b3faa7e1306d741840d453432902d73cc9a146a035e40271eae73-vwap_reversion-20260415T232611_636Z-long_yes",
       "title": "Will the San Antonio Spurs win the 2026 NBA Finals?",
       "market": "0xb6b3d7a2037b3faa7e1306d741840d453432902d73cc9a146a035e40271eae73",
@@ -97,6 +221,7 @@
     },
     {
       "decision_id": "decision-research-0xfc6260666d020a912a87d9000eff5116d2adfb8c30aba543427a4c1f1411f1a0-vwap_reversion-20260415T232611_636Z-long_yes",
+      "aggregate_key": "polymarket:0xfc6260666d020a912a87d9000eff5116d2adfb8c30aba543427a4c1f1411f1a0",
       "signal_id": "research-0xfc6260666d020a912a87d9000eff5116d2adfb8c30aba543427a4c1f1411f1a0-vwap_reversion-20260415T232611_636Z-long_yes",
       "title": "MegaETH market cap (FDV) >$2B one day after launch?",
       "market": "0xfc6260666d020a912a87d9000eff5116d2adfb8c30aba543427a4c1f1411f1a0",
@@ -113,6 +238,7 @@
     },
     {
       "decision_id": "decision-research-0x7976b8dbacf9077eb1453a62bcefd6ab2df199acd28aad276ff0d920d6992892-vwap_reversion-20260415T232611_636Z-long_yes",
+      "aggregate_key": "polymarket:0x7976b8dbacf9077eb1453a62bcefd6ab2df199acd28aad276ff0d920d6992892",
       "signal_id": "research-0x7976b8dbacf9077eb1453a62bcefd6ab2df199acd28aad276ff0d920d6992892-vwap_reversion-20260415T232611_636Z-long_yes",
       "title": "Will Spain win the 2026 FIFA World Cup?",
       "market": "0x7976b8dbacf9077eb1453a62bcefd6ab2df199acd28aad276ff0d920d6992892",
@@ -129,6 +255,7 @@
     },
     {
       "decision_id": "decision-research-0x375409bc5eeeff961e82b479caeccc20f33d15738e5bce1186d628aa3d9dfb1f-vwap_reversion-20260415T232611_636Z-long_yes",
+      "aggregate_key": "polymarket:0x375409bc5eeeff961e82b479caeccc20f33d15738e5bce1186d628aa3d9dfb1f",
       "signal_id": "research-0x375409bc5eeeff961e82b479caeccc20f33d15738e5bce1186d628aa3d9dfb1f-vwap_reversion-20260415T232611_636Z-long_yes",
       "title": "Will England win the 2026 FIFA World Cup?",
       "market": "0x375409bc5eeeff961e82b479caeccc20f33d15738e5bce1186d628aa3d9dfb1f",
@@ -145,6 +272,7 @@
     },
     {
       "decision_id": "decision-research-0x9b6fef249040fd17e9c107955b37ac2c3e923509b6b0ff01cc463a331ddeb894-vwap_reversion-20260415T232611_636Z-long_yes",
+      "aggregate_key": "polymarket:0x9b6fef249040fd17e9c107955b37ac2c3e923509b6b0ff01cc463a331ddeb894",
       "signal_id": "research-0x9b6fef249040fd17e9c107955b37ac2c3e923509b6b0ff01cc463a331ddeb894-vwap_reversion-20260415T232611_636Z-long_yes",
       "title": "Will France win the 2026 FIFA World Cup?",
       "market": "0x9b6fef249040fd17e9c107955b37ac2c3e923509b6b0ff01cc463a331ddeb894",
@@ -162,6 +290,42 @@
   ],
   "closed_decisions": [],
   "vetoed_signals": [
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.07400000000000001,
+      "occurred": "2026-04-16 17:02"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.08600000000000001,
+      "occurred": "2026-04-16 16:57"
+    },
+    {
+      "title": "Will the Boston Celtics win the 2026 NBA Finals?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.097,
+      "occurred": "2026-04-16 16:52"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.092,
+      "occurred": "2026-04-16 16:52"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.092,
+      "occurred": "2026-04-16 16:46"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0862,
+      "occurred": "2026-04-16 16:41"
+    },
     {
       "title": "Will England win the 2026 FIFA World Cup?",
       "reason_code": "probability_out_of_bounds",
@@ -245,42 +409,6 @@
       "reason_code": "probability_out_of_bounds",
       "p_final": 0.0862,
       "occurred": "2026-04-16 15:24"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.0922,
-      "occurred": "2026-04-16 15:13"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.0922,
-      "occurred": "2026-04-16 15:08"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.0922,
-      "occurred": "2026-04-16 15:03"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.0922,
-      "occurred": "2026-04-16 14:56"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.0918,
-      "occurred": "2026-04-16 14:51"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.07980000000000001,
-      "occurred": "2026-04-16 14:46"
     }
   ],
   "agents": [
@@ -346,12 +474,12 @@
       "status": "active"
     },
     {
-      "name": "disk-guard",
+      "name": "llm-health",
       "next": "Thu 2026-04-16",
       "status": "active"
     },
     {
-      "name": "llm-health",
+      "name": "disk-guard",
       "next": "Thu 2026-04-16",
       "status": "active"
     },
@@ -367,14 +495,14 @@
     }
   ],
   "git_log": [
+    "672e5fa feat: dashboard v2 - bankroll, PnL, titles real, closed, dismissed",
     "28618e1 feat: EXCAMIM dashboard - mission control UI port 8765",
     "9d42609 fix: repair_store creates raw dir, telegram spam prevention",
     "d8c1bce fix: tolerant snapshot validation - skip invalid lines instead of abort",
     "e9c85c7 chore: remove telegram runtime state",
     "4abfc3c feat: telegram notifications - signals, decisions, PnL, LLM cost, alerts",
     "354aff0 feat: full resilience system - dns watchdog, llm alarm, disk guard, daily health",
-    "6c5eb40 chore: session 3 complete - stable pipeline, clean edge analysis",
-    "6f25ab3 fix: create parent dir before temp file in write_all"
+    "6c5eb40 chore: session 3 complete - stable pipeline, clean edge analysis"
   ],
   "pnl": {
     "status": "paper_trading - awaiting resolution",
@@ -383,8 +511,8 @@
     "deployed_usd": 2000.0,
     "est_max_gain_usd": 0.0,
     "est_max_loss_usd": 2000.0,
-    "daily_llm_cost": 0.0366,
-    "weekly_llm_cost": 0.0366,
+    "daily_llm_cost": 0.0387,
+    "weekly_llm_cost": 0.0387,
     "monthly_llm_cost": 0.07,
     "daily_series": [
       {
@@ -413,15 +541,15 @@
       },
       {
         "date": "2026-04-16",
-        "cost": 0.036555
+        "cost": 0.038697
       }
     ]
   },
   "system": {
     "disk_pct": 40,
-    "events_total": 2455,
+    "events_total": 2600,
     "decisions_total": 8,
-    "vetos_total": 94,
-    "signals_total": 1105
+    "vetos_total": 100,
+    "signals_total": 1170
   }
 }

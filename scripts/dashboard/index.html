@@ -274,8 +274,62 @@
       margin-top: 10px;
       border-radius: 16px;
       border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(255,255,255,0.03);
+      background: #0d1117;
       overflow: hidden;
+    }
+    .chart-shell {
+      position: relative;
+      display: grid;
+      gap: 10px;
+    }
+    .chart-controls {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .chart-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .chart-button {
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+      color: #dbeafe;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      padding: 8px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .chart-button.active {
+      border-color: rgba(34,197,94,0.42);
+      background: rgba(34,197,94,0.14);
+      color: #86efac;
+    }
+    .chart-tooltip {
+      position: absolute;
+      z-index: 4;
+      pointer-events: none;
+      opacity: 0;
+      transform: translate(-50%, calc(-100% - 12px));
+      min-width: 150px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(13,17,23,0.96);
+      color: #e2e8f0;
+      font-family: var(--mono);
+      font-size: 0.84rem;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.35);
+      white-space: nowrap;
+    }
+    .chart-tooltip strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #86efac;
     }
     .chart svg { display: block; width: 100%; height: auto; }
     .log-list {
@@ -375,8 +429,19 @@
             <span class="mini-pill" id="pnlCosts">LLM hoy/semana/mes: $0.0000 / $0.0000 / $0.00</span>
           </div>
         </div>
-        <div class="chart">
-          <svg id="llmChart" viewBox="0 0 900 260" role="img" aria-label="LLM cost chart"></svg>
+        <div class="chart-shell">
+          <div class="chart-controls">
+            <div class="panel-copy">Coste LLM por periodo, agregado desde `events.jsonl` de `probability-agent-v1`.</div>
+            <div class="chart-buttons" id="chartButtons">
+              <button class="chart-button active" type="button" data-range="daily">Diario</button>
+              <button class="chart-button" type="button" data-range="weekly">Semanal</button>
+              <button class="chart-button" type="button" data-range="monthly">Mensual</button>
+            </div>
+          </div>
+          <div class="chart">
+            <svg id="llmChart" viewBox="0 0 900 320" role="img" aria-label="LLM cost line chart"></svg>
+          </div>
+          <div class="chart-tooltip" id="chartTooltip"></div>
         </div>
       </div>
 
@@ -496,6 +561,7 @@
 
   <script>
     const state = { countdown: 60, timer: null, refreshing: false };
+    const chartState = { range: "daily", data: { daily: [], weekly: [], monthly: [] } };
     const urlText = "http://78.47.57.39:8765";
 
     const fmt = (value, digits = 4) => Number(value || 0).toFixed(digits);
@@ -531,43 +597,114 @@
       return rows.join("");
     };
 
-    const renderChart = (series) => {
+    const setChartRange = (range) => {
+      chartState.range = range;
+      document.querySelectorAll(".chart-button").forEach((button) => {
+        button.classList.toggle("active", button.dataset.range === range);
+      });
+      renderCostChart(chartState.data);
+    };
+
+    const renderCostChart = (chartData) => {
       const svg = document.getElementById("llmChart");
+      const tooltip = document.getElementById("chartTooltip");
+      const shell = document.querySelector(".chart-shell");
       const width = 900;
-      const height = 260;
-      const pad = { top: 20, right: 20, bottom: 42, left: 52 };
+      const height = 320;
+      const pad = { top: 28, right: 24, bottom: 84, left: 70 };
       const innerW = width - pad.left - pad.right;
       const innerH = height - pad.top - pad.bottom;
-      const values = (series || []).map((item) => Number(item.cost || 0));
+      const range = chartState.range;
+      const rawSeries = Array.isArray((chartData || {})[range]) ? (chartData || {})[range] : [];
+      const series = rawSeries.map((item) => {
+        const label = range === "weekly" ? String(item.week || "") : range === "monthly" ? String(item.month || "") : String(item.date || "");
+        return {
+          label,
+          cost: Number(item.cost || 0),
+        };
+      });
+      const values = series.map((item) => item.cost);
       const maxValue = Math.max(0.000001, ...values, 0.000001);
-      const barGap = 14;
-      const barW = Math.max(28, (innerW - barGap * (series.length - 1)) / Math.max(1, series.length));
-      const scale = (value) => (value / maxValue) * innerH;
+      const xStep = series.length > 1 ? innerW / (series.length - 1) : 0;
+      const points = series.map((item, index) => {
+        const x = series.length > 1 ? pad.left + index * xStep : pad.left + innerW / 2;
+        const y = pad.top + innerH - (item.cost / maxValue) * innerH;
+        return { ...item, x, y };
+      });
+      const linePath = points.length
+        ? points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ")
+        : "";
+      const gridTicks = 4;
+      const yTicks = Array.from({ length: gridTicks + 1 }, (_, index) => (maxValue * index) / gridTicks).reverse();
+      const lineColor = "#22c55e";
+      const axisColor = "rgba(255,255,255,0.14)";
       const labelColor = "#94a3b8";
 
-      const bars = (series || []).map((item, index) => {
-        const h = scale(Number(item.cost || 0));
-        const x = pad.left + index * (barW + barGap);
-        const y = pad.top + innerH - h;
-        const label = String(item.date || "").slice(5);
+      const grid = yTicks.map((tick) => {
+        const y = pad.top + innerH - (tick / maxValue) * innerH;
         return `
           <g>
-            <rect x="${x}" y="${y}" width="${barW}" height="${Math.max(0, h)}" rx="8" fill="#22c55e" fill-opacity="0.88"></rect>
-            <text x="${x + barW / 2}" y="${height - 14}" text-anchor="middle" fill="${labelColor}" font-size="11" font-family="monospace">${label}</text>
-            <text x="${x + barW / 2}" y="${Math.max(16, y - 8)}" text-anchor="middle" fill="#dbeafe" font-size="11" font-family="monospace">$${fmt(item.cost, 4)}</text>
+            <line x1="${pad.left}" y1="${y.toFixed(2)}" x2="${width - pad.right}" y2="${y.toFixed(2)}" stroke="${axisColor}" stroke-dasharray="4 6"></line>
+            <text x="${pad.left - 12}" y="${(y + 4).toFixed(2)}" text-anchor="end" fill="${labelColor}" font-size="11" font-family="monospace">$${fmt(tick, 4)}</text>
           </g>`;
       }).join("");
 
-      const axis = `
-        <line x1="${pad.left}" y1="${pad.top + innerH}" x2="${width - pad.right}" y2="${pad.top + innerH}" stroke="rgba(255,255,255,0.14)"></line>
-        <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + innerH}" stroke="rgba(255,255,255,0.14)"></line>`;
+      const xLabels = points.map((point) => `
+        <g transform="translate(${point.x.toFixed(2)}, ${height - 26}) rotate(45)">
+          <text x="0" y="0" text-anchor="start" fill="${labelColor}" font-size="11" font-family="monospace">${point.label}</text>
+        </g>`).join("");
+
+      const plotted = points.map((point, index) => `
+        <g>
+          ${index > 0 ? `<line x1="${points[index - 1].x.toFixed(2)}" y1="${points[index - 1].y.toFixed(2)}" x2="${point.x.toFixed(2)}" y2="${point.y.toFixed(2)}" stroke="${lineColor}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></line>` : ""}
+          <circle cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="4.5" fill="${lineColor}" stroke="#0d1117" stroke-width="2"></circle>
+          <circle
+            cx="${point.x.toFixed(2)}"
+            cy="${point.y.toFixed(2)}"
+            r="12"
+            fill="transparent"
+            data-point-index="${index}"
+            data-point-label="${point.label}"
+            data-point-cost="${point.cost}"
+          ></circle>
+        </g>`).join("");
+
+      const emptyState = series.length
+        ? ""
+        : `<text x="${width / 2}" y="${height / 2}" text-anchor="middle" fill="#94a3b8" font-size="13" font-family="monospace">No hay datos para esta serie</text>`;
 
       svg.innerHTML = `
-        <rect x="0" y="0" width="${width}" height="${height}" fill="#0f1117"></rect>
-        <text x="20" y="22" fill="#cbd5e1" font-size="12" font-family="monospace">LLM cost por día (últimos 7 días)</text>
-        ${axis}
-        ${bars}
+        <rect x="0" y="0" width="${width}" height="${height}" fill="#0d1117"></rect>
+        <text x="22" y="22" fill="#cbd5e1" font-size="12" font-family="monospace">LLM cost ${range === "weekly" ? "semanal" : range === "monthly" ? "mensual" : "diario"}</text>
+        <line x1="${pad.left}" y1="${pad.top + innerH}" x2="${width - pad.right}" y2="${pad.top + innerH}" stroke="${axisColor}"></line>
+        <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + innerH}" stroke="${axisColor}"></line>
+        ${grid}
+        ${linePath ? `<path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>` : ""}
+        ${plotted}
+        ${xLabels}
+        ${emptyState}
       `;
+
+      svg.querySelectorAll("[data-point-index]").forEach((node) => {
+        node.addEventListener("mouseenter", (event) => {
+          const index = Number(node.dataset.pointIndex || 0);
+          const point = points[index];
+          if (!point) return;
+          tooltip.innerHTML = `<strong>${point.label}</strong>$${fmt(point.cost, 6)}`;
+          tooltip.style.opacity = "1";
+          const shellRect = shell.getBoundingClientRect();
+          tooltip.style.left = `${event.clientX - shellRect.left + 14}px`;
+          tooltip.style.top = `${event.clientY - shellRect.top - 8}px`;
+        });
+        node.addEventListener("mousemove", (event) => {
+          const shellRect = shell.getBoundingClientRect();
+          tooltip.style.left = `${event.clientX - shellRect.left + 14}px`;
+          tooltip.style.top = `${event.clientY - shellRect.top - 8}px`;
+        });
+        node.addEventListener("mouseleave", () => {
+          tooltip.style.opacity = "0";
+        });
+      });
     };
 
     const copyUrl = async () => {
@@ -594,6 +731,7 @@
       const gitLog = d.git_log || [];
       const bankroll = d.bankroll || {};
       const pnl = d.pnl || {};
+      chartState.data = d.cost_chart || chartState.data;
 
       document.getElementById("updated").textContent = `updated ${d.updated || "n/a"}`;
       document.getElementById("llmToday").textContent = `$${fmt(costs.today_usd)} (€${fmt(costs.today_eur)})`;
@@ -613,7 +751,7 @@
       document.getElementById("pnlGain").textContent = `Ganancia max estimada: $${fmt(pnl.est_max_gain_usd || 0, 2)}`;
       document.getElementById("pnlLoss").textContent = `Pérdida max estimada: $${fmt(pnl.est_max_loss_usd || 0, 2)}`;
       document.getElementById("pnlCosts").textContent = `LLM hoy/semana/mes: $${fmt(pnl.daily_llm_cost || 0)} / $${fmt(pnl.weekly_llm_cost || 0)} / $${fmt(pnl.monthly_llm_cost || 0, 2)}`;
-      renderChart(pnl.daily_series || []);
+      renderCostChart(chartState.data);
 
       document.getElementById("agentsTable").innerHTML = renderTableRows(
         agents.map((agent) => `
@@ -716,6 +854,9 @@
     };
 
     document.getElementById("copyUrlBtn").addEventListener("click", copyUrl);
+    document.querySelectorAll(".chart-button").forEach((button) => {
+      button.addEventListener("click", () => setChartRange(button.dataset.range || "daily"));
+    });
     state.timer = setInterval(tick, 1000);
     refresh();
   </script>
