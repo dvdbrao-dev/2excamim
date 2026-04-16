@@ -817,7 +817,7 @@ fn sizing_agent_applies_kelly_and_is_idempotent() {
         .find(|event| event.event_type.as_str() == "decision.formed")
         .unwrap();
     assert_eq!(decision_event.payload["decision_id"], "decision-signal-1");
-    assert_eq!(decision_event.payload["size_hint"], 250.0);
+    assert_eq!(decision_event.payload["size_hint"], 50.0);
     assert_eq!(decision_event.payload["action"], "Enter");
     assert_eq!(
         decision_event.provenance.actor.as_deref(),

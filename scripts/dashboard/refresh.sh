@@ -156,6 +156,8 @@ for raw in lines:
         decision_id = payload.get("decision_id") or linkage.get("decision_id")
         signal_id = linkage.get("signal_id") or payload.get("signal_id")
         size_hint = safe_float(payload.get("size_hint", 0.0))
+        if size_hint > 100:
+            continue
         if occurred_at is None or occurred_at < reset_cutoff:
             continue
         market_key = aggregate_key if isinstance(aggregate_key, str) and aggregate_key else decision_id or signal_id or ""

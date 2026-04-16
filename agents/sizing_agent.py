@@ -299,6 +299,37 @@ def active_decision_markets(events: list[dict[str, Any]]) -> set[str]:
     return active_markets
 
 
+def active_deployed_usd(events: list[dict[str, Any]]) -> float:
+    decision_indexes: dict[str, int] = {}
+    decision_sizes: dict[str, float] = {}
+    decision_veto_indexes: dict[str, int] = {}
+
+    for index, event in enumerate(events):
+        event_type = event.get("event_type")
+        payload = event.get("payload") or {}
+
+        if event_type == "decision.formed":
+            decision_id = payload.get("decision_id")
+            size_hint = payload.get("size_hint")
+            if isinstance(decision_id, str):
+                decision_indexes[decision_id] = index
+                decision_sizes[decision_id] = float(size_hint) if isinstance(size_hint, (int, float)) else 0.0
+        elif event_type == "veto.raised" and payload.get("scope") == "Decision":
+            target_id = payload.get("target_id")
+            if isinstance(target_id, str):
+                previous = decision_veto_indexes.get(target_id)
+                if previous is None or index > previous:
+                    decision_veto_indexes[target_id] = index
+
+    total = 0.0
+    for decision_id, decision_index in decision_indexes.items():
+        veto_index = decision_veto_indexes.get(decision_id)
+        if veto_index is None or veto_index <= decision_index:
+            total += decision_sizes.get(decision_id, 0.0)
+
+    return total
+
+
 def build_provenance(run_id: str, watch_dir: Path, market_id: str, notes: str) -> dict[str, Any]:
     return {
         "source_kind": "Runtime",
@@ -406,6 +437,8 @@ def main() -> int:
     snapshots = latest_snapshots(watch_dir)
     existing_decisions, existing_vetoes = existing_event_ids(events)
     active_markets = active_decision_markets(events)
+    current_deployed = active_deployed_usd(events)
+    bankroll_limit = float(args.bankroll) * 0.6
 
     eligible_candidates = [
         SignalCandidate(
@@ -442,7 +475,7 @@ def main() -> int:
             skipped_active_decision += 1
             continue
 
-        size = kelly_size(candidate.confirmation_score, snapshot.midpoint, float(args.bankroll))
+        size = kelly_size(candidate.confirmation_score, snapshot.midpoint, float(args.bankroll), max_fraction=0.05)
 
         if size <= 0:
             veto_id = deterministic_veto_id(candidate.signal_id)
@@ -458,6 +491,9 @@ def main() -> int:
             existing_vetoes.add(veto_id)
             continue
 
+        if current_deployed + size > bankroll_limit:
+            continue
+
         decision_id = deterministic_decision_id(candidate.signal_id)
         if decision_id in existing_decisions:
             skipped_already_written += 1
@@ -467,6 +503,7 @@ def main() -> int:
         decisions_written += 1
         existing_decisions.add(decision_id)
         active_markets.add(candidate.instrument)
+        current_deployed += size
 
     print(
         json.dumps(
