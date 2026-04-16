@@ -25,6 +25,8 @@ DEFAULT_WATCH_DIR = Path("./var/market-watch")
 STRATEGY = "vwap_reversion"
 TIMEFRAME = "market_watch_snapshot"
 GAP_FLOOR = 0.07
+EXTREME_PRICE_FLOOR = 0.10
+EXTREME_PRICE_CEILING = 0.90
 
 
 @dataclass
@@ -116,24 +118,35 @@ def numeric_value(value: Any) -> float | None:
     return None
 
 
-def build_candidate(snapshot: dict[str, Any]) -> SignalCandidate | None:
-    market_id = snapshot.get("market_id")
-    status = snapshot.get("status")
+def snapshot_midpoint(snapshot: dict[str, Any]) -> float | None:
     best_bid = numeric_value(snapshot.get("best_bid"))
     best_ask = numeric_value(snapshot.get("best_ask"))
+    if best_bid is None or best_ask is None:
+        return None
+    return (best_bid + best_ask) / 2.0
+
+
+def build_candidate(snapshot: dict[str, Any]) -> tuple[SignalCandidate | None, str | None]:
+    market_id = snapshot.get("market_id")
+    status = snapshot.get("status")
     observed_at = parse_timestamp(snapshot.get("observed_at"))
 
     if not isinstance(market_id, str) or not market_id.strip():
-        return None
+        return None, "unscorable"
     if status != "Open":
-        return None
-    if best_bid is None or best_ask is None or observed_at is None:
-        return None
+        return None, "unscorable"
+    if observed_at is None:
+        return None, "unscorable"
 
-    midpoint = (best_bid + best_ask) / 2.0
+    midpoint = snapshot_midpoint(snapshot)
+    if midpoint is None:
+        return None, "unscorable"
+    if midpoint < EXTREME_PRICE_FLOOR or midpoint > EXTREME_PRICE_CEILING:
+        return None, "extreme_price"
+
     gap = abs(midpoint - 0.5)
     if gap < GAP_FLOOR:
-        return None
+        return None, "unscorable"
 
     side = "long_yes" if midpoint < 0.5 else "long_no"
     strength = min(gap * 2.0, 1.0)
@@ -151,7 +164,7 @@ def build_candidate(snapshot: dict[str, Any]) -> SignalCandidate | None:
         aggregate_key=aggregate_key,
         instrument=aggregate_key,
         strength=strength,
-    )
+    ), None
 
 
 def build_signal_event(candidate: SignalCandidate, run_id: str, watch_dir: Path) -> dict[str, Any]:
@@ -219,11 +232,15 @@ def main() -> int:
 
     generated = 0
     skipped_existing = 0
+    skipped_extreme_price = 0
     skipped_unscorable = 0
 
     for snapshot in snapshots:
-        candidate = build_candidate(snapshot)
+        candidate, reason = build_candidate(snapshot)
         if candidate is None:
+            if reason == "extreme_price":
+                skipped_extreme_price += 1
+                continue
             skipped_unscorable += 1
             continue
         if candidate.signal_id in known_signal_ids:
@@ -246,6 +263,7 @@ def main() -> int:
                 "snapshots_read": len(snapshots),
                 "signals_generated": generated,
                 "skipped_existing": skipped_existing,
+                "skipped_extreme_price": skipped_extreme_price,
                 "skipped_unscorable": skipped_unscorable,
             },
             separators=(",", ":"),

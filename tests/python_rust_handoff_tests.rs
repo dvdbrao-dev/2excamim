@@ -542,6 +542,58 @@ fn reports_reasonable_error_for_missing_input_file() {
 }
 
 #[test]
+fn signal_agent_skips_extreme_price_markets() {
+    let watch_dir = temp_path("signal-watch", "tmp");
+    let store_path = temp_path("signal-store", "jsonl");
+    let snapshots_path = watch_dir.join("snapshots.jsonl");
+
+    fs::create_dir_all(&watch_dir).unwrap();
+    write_jsonl(
+        &snapshots_path,
+        &[
+            json!({
+                "market_id": "market-normal",
+                "source": "Polymarket",
+                "title": "Will the normal market resolve?",
+                "status": "Open",
+                "best_bid": 0.34,
+                "best_ask": 0.48,
+                "observed_at": "2026-04-14T12:00:00Z"
+            }),
+            json!({
+                "market_id": "market-extreme",
+                "source": "Polymarket",
+                "title": "Will the extreme market resolve?",
+                "status": "Open",
+                "best_bid": 0.96,
+                "best_ask": 0.98,
+                "observed_at": "2026-04-14T12:05:00Z"
+            }),
+        ],
+    );
+
+    let args = vec![
+        "--store".into(),
+        store_path.display().to_string(),
+        "--watch-dir".into(),
+        watch_dir.display().to_string(),
+    ];
+    let (code, stdout, stderr) = run_python_script("agents/signal_agent.py", &args);
+
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.contains("\"signals_generated\":1"));
+    assert!(stdout.contains("\"skipped_extreme_price\":1"));
+
+    let store = JsonlEventStore::new(&store_path).unwrap();
+    let events = store.read_all().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].event_type.as_str(), "signal.generated");
+
+    cleanup(&[&store_path]);
+    let _ = fs::remove_dir_all(&watch_dir);
+}
+
+#[test]
 fn scoring_agent_emits_market_scored_and_confirmation_requires_it() {
     let watch_dir = temp_path("watch-dir", "tmp");
     let store_path = temp_path("score-store", "jsonl");
@@ -551,17 +603,30 @@ fn scoring_agent_emits_market_scored_and_confirmation_requires_it() {
     fs::create_dir_all(&watch_dir).unwrap();
     write_jsonl(
         &snapshots_path,
-        &[json!({
-            "market_id": "market-1",
-            "source": "Polymarket",
-            "title": "Will the test market resolve?",
-            "status": "Open",
-            "best_bid": 0.58,
-            "best_ask": 0.60,
-            "last_price": 0.59,
-            "volume": 60000.0,
-            "observed_at": "2026-04-14T12:00:00Z"
-        })],
+        &[
+            json!({
+                "market_id": "market-1",
+                "source": "Polymarket",
+                "title": "Will the test market resolve?",
+                "status": "Open",
+                "best_bid": 0.58,
+                "best_ask": 0.60,
+                "last_price": 0.59,
+                "volume": 60000.0,
+                "observed_at": "2026-04-14T12:00:00Z"
+            }),
+            json!({
+                "market_id": "market-extreme",
+                "source": "Polymarket",
+                "title": "Will the extreme market resolve?",
+                "status": "Open",
+                "best_bid": 0.96,
+                "best_ask": 0.98,
+                "last_price": 0.97,
+                "volume": 60000.0,
+                "observed_at": "2026-04-14T12:05:00Z"
+            }),
+        ],
     );
     write_jsonl(
         &raw_path,
@@ -593,6 +658,7 @@ fn scoring_agent_emits_market_scored_and_confirmation_requires_it() {
         run_python_script("agents/scoring_agent.py", &scoring_args);
     assert_eq!(score_code, 0, "{score_stderr}");
     assert!(score_stdout.contains("\"market_scored_this_run\":1"));
+    assert!(score_stdout.contains("\"price_too_extreme\":1"));
 
     let store = JsonlEventStore::new(&store_path).unwrap();
     let scored_events = store.read_all().unwrap();

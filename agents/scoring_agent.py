@@ -24,6 +24,8 @@ DEFAULT_STORE = Path("./var/events.jsonl")
 DEFAULT_WATCH_DIR = Path("./var/market-watch")
 
 PRICE_GAP_LIMIT = 0.07
+EXTREME_PRICE_FLOOR = 0.10
+EXTREME_PRICE_CEILING = 0.90
 MIN_VOLUME_USDC = 50_000.0
 MIN_RESOLUTION_HOURS = 4.0
 MAX_RESOLUTION_HOURS = 168.0
@@ -192,12 +194,27 @@ def market_price(snapshot: dict[str, Any]) -> float | None:
     return None
 
 
+def market_midpoint(snapshot: dict[str, Any]) -> float | None:
+    best_bid = snapshot.get("best_bid")
+    best_ask = snapshot.get("best_ask")
+    if isinstance(best_bid, (int, float)) and isinstance(best_ask, (int, float)):
+        if math.isfinite(float(best_bid)) and math.isfinite(float(best_ask)):
+            return (float(best_bid) + float(best_ask)) / 2.0
+    return None
+
+
 def score_market(
     snapshot: dict[str, Any], resolution_at: datetime | None
 ) -> tuple[MarketCandidate | None, str | None]:
     market_id = snapshot.get("market_id")
     if not isinstance(market_id, str) or not market_id.strip():
         return None, "missing market_id"
+
+    midpoint = market_midpoint(snapshot)
+    if midpoint is not None and (
+        midpoint < EXTREME_PRICE_FLOOR or midpoint > EXTREME_PRICE_CEILING
+    ):
+        return None, "price_too_extreme"
 
     price = market_price(snapshot)
     if price is None:
