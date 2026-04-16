@@ -65,6 +65,15 @@ impl FilesystemSnapshotRepository {
 
             file.flush()?;
             file.sync_all()?;
+
+            if let Err(error) = validate_snapshot_jsonl(&temp_path) {
+                eprintln!(
+                    "refusing to promote invalid snapshot temp file {}: {error}",
+                    temp_path.display()
+                );
+                return Err(error);
+            }
+
             std::fs::rename(&temp_path, &self.path)?;
             Ok(())
         })();
@@ -180,6 +189,33 @@ fn temp_store_path(path: &Path) -> Result<PathBuf, StorageError> {
     let mut temp_name = file_name.to_os_string();
     temp_name.push(".tmp");
     Ok(path.with_file_name(temp_name))
+}
+
+fn validate_snapshot_jsonl(path: &Path) -> Result<(), StorageError> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+
+    for (index, line) in reader.lines().enumerate() {
+        let line = line.map_err(StorageError::from)?;
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        let snapshot: MarketSnapshot = serde_json::from_str(&line).map_err(|error| {
+            StorageError::invalid_data(format!(
+                "failed to validate temp JSONL line {}: {error}",
+                index + 1
+            ))
+        })?;
+        snapshot.validate().map_err(|error| {
+            StorageError::invalid_data(format!(
+                "invalid temp snapshot at line {}: {error}",
+                index + 1
+            ))
+        })?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
