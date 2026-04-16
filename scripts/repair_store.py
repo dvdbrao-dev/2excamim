@@ -33,4 +33,5 @@ files = [
 for f in files:
     p = pathlib.Path(f)
     n = repair_jsonl(p)
+    pathlib.Path("var/market-watch/raw").mkdir(parents=True, exist_ok=True)
     print(f"repaired {f}: {n} valid lines")
