@@ -208,16 +208,39 @@ def kelly_size(p_win: float, market_price: float, bankroll: float, max_fraction:
         or market_price >= 1
         or max_fraction <= 0
     ):
+        print(
+            "kelly_size invalid "
+            f"p_win={p_win:.6f} market_price={market_price:.6f} "
+            f"bankroll={bankroll:.2f} cap={max_fraction:.4f} "
+            "b=n/a f_star=n/a size_before_cap=0.00 size_after_cap=0.00",
+            flush=True,
+        )
         return 0.0
 
     b = (1 / market_price) - 1
     if b <= 0:
+        print(
+            "kelly_size invalid "
+            f"p_win={p_win:.6f} market_price={market_price:.6f} "
+            f"bankroll={bankroll:.2f} cap={max_fraction:.4f} "
+            f"b={b:.6f} f_star=n/a size_before_cap=0.00 size_after_cap=0.00",
+            flush=True,
+        )
         return 0.0
     q = 1 - p_win
     f_star = (p_win * b - q) / b
+    size_before_cap = bankroll * max(f_star, 0.0)
+    size_after_cap = bankroll * min(max(f_star, 0.0), max_fraction)
+    print(
+        "kelly_size "
+        f"p_win={p_win:.6f} market_price={market_price:.6f} "
+        f"b={b:.6f} f_star={f_star:.6f} "
+        f"size_before_cap={size_before_cap:.2f} size_after_cap={size_after_cap:.2f}",
+        flush=True,
+    )
     if f_star <= 0:
         return 0.0
-    return round(bankroll * min(f_star, max_fraction), 2)
+    return round(size_after_cap, 2)
 
 
 def deterministic_decision_id(signal_id: str) -> str:

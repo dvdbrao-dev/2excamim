@@ -89,6 +89,7 @@ llm_signals_week = 0
 now = datetime.now(timezone.utc)
 today = now.date()
 week_start = now - timedelta(days=6)
+reset_cutoff = datetime.fromisoformat("2026-04-16T10:00:00+00:00")
 
 for raw in lines:
     if not raw.strip():
@@ -155,6 +156,8 @@ for raw in lines:
         decision_id = payload.get("decision_id") or linkage.get("decision_id")
         signal_id = linkage.get("signal_id") or payload.get("signal_id")
         size_hint = safe_float(payload.get("size_hint", 0.0))
+        if occurred_at is None or occurred_at < reset_cutoff:
+            continue
         market_key = aggregate_key if isinstance(aggregate_key, str) and aggregate_key else decision_id or signal_id or ""
         signal_info = signal_confirmations.get(signal_id, {})
         decision_row = {
@@ -163,6 +166,7 @@ for raw in lines:
             "signal_id": signal_id,
             "title": signal_info.get("title", title),
             "market": signal_info.get("market_id", market_id),
+            "size": round(size_hint, 2),
             "kelly_usd": round(size_hint, 2),
             "kelly_eur": round(size_hint * 0.92, 2),
             "p_final": safe_float(signal_info.get("p_final", 0.0)),
@@ -202,13 +206,16 @@ for decision in sorted(decision_rows_by_market.values(), key=decision_sort_key):
     else:
         active_decisions.append({k: v for k, v in decision.items() if k != "occurred_dt"})
 
+active_decisions = active_decisions[-8:]
+closed_decisions = closed_decisions[-8:]
+
 decisions_by_market = {}
 for decision in active_decisions:
     key = decision.get("aggregate_key") or decision.get("market") or decision.get("decision_id") or ""
-    decisions_by_market[key] = decision["size_hint"]
+    decisions_by_market[key] = decision["size"]
 
-active_decisions_display = active_decisions[-8:]
-closed_decisions_display = closed_decisions[-8:]
+active_decisions_display = active_decisions
+closed_decisions_display = closed_decisions
 vetoed_signals = vetoed_signals[-20:]
 vetoed_signals.reverse()
 
@@ -223,7 +230,7 @@ est_max_gain_usd = 0.0
 for item in active_decisions:
     p_final = safe_float(item.get("p_final", 0.0))
     if p_final > 0:
-        est_max_gain_usd += item["kelly_usd"] * (1.0 / p_final - 1.0)
+        est_max_gain_usd += item["size"] * (1.0 / p_final - 1.0)
 
 daily_series = []
 for offset in range(6, -1, -1):
@@ -341,7 +348,7 @@ data = {
         "decisions_closed": len(closed_decisions),
         "deployed_usd": deployed_usd,
         "est_max_gain_usd": round(est_max_gain_usd, 2),
-        "est_max_loss_usd": round(sum(item["kelly_usd"] for item in active_decisions), 2),
+        "est_max_loss_usd": round(sum(item["size"] for item in active_decisions), 2),
         "daily_llm_cost": round(llm_cost_today, 4),
         "weekly_llm_cost": round(llm_cost_week, 4),
         "monthly_llm_cost": round(monthly_est, 2),

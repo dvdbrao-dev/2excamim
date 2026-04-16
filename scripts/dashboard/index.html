@@ -297,6 +297,19 @@
       min-height: 18px;
     }
 
+    .metric.alert .metric-value {
+      color: var(--red);
+      text-shadow: 0 0 12px rgba(255, 68, 68, 0.22);
+    }
+
+    .metric-warning {
+      color: var(--red);
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
     .meter {
       height: 6px;
       border: 1px solid rgba(38, 50, 71, 0.9);
@@ -679,9 +692,12 @@
         <article class="metric">
           <div class="metric-label">BANKROLL</div>
           <div class="metric-main">
-            <div class="metric-value" id="bankrollValue">$0.00 / $0.00</div>
+            <div class="metric-value" id="bankrollValue">$0.00 | $0.00</div>
           </div>
-          <div class="metric-sub"><span id="bankrollEur">€0.00 / €0.00</span></div>
+          <div class="metric-sub">
+            <span id="bankrollReal">Bankroll real: $1000</span>
+            <span class="metric-warning" id="bankrollWarning"></span>
+          </div>
           <div class="meter"><span class="meter-fill" id="bankrollBar"></span></div>
         </article>
         <article class="metric">
@@ -1117,8 +1133,14 @@
       document.getElementById("perSignal").textContent = `$${fmt(costs.per_signal || 0, 6)} / signal`;
       document.getElementById("eventsTotal").textContent = `${fmtInt(system.events_total || 0)} events`;
       document.getElementById("signalsTotal").textContent = `${fmtInt(system.signals_total || 0)} signals generated`;
-      document.getElementById("bankrollValue").textContent = `$${fmt(bankroll.deployed_usd || 0)} / $${fmt(bankroll.available_usd || 0)}`;
-      document.getElementById("bankrollEur").textContent = `€${fmt(bankroll.deployed_eur || 0)} / €${fmt(bankroll.available_eur || 0)}`;
+      const bankrollTotal = Number(bankroll.bankroll_total || 1000);
+      const deployedUsd = Number(bankroll.deployed_usd || 0);
+      const availableUsd = Number(bankroll.available_usd || 0);
+      const bankrollOver = deployedUsd > bankrollTotal;
+      document.getElementById("bankrollValue").textContent = `$${fmt(deployedUsd)} | $${fmt(availableUsd)}`;
+      document.getElementById("bankrollReal").textContent = `Bankroll real: $${fmt(bankrollTotal, 0)}`;
+      document.getElementById("bankrollWarning").textContent = bankrollOver ? "⚠ OVER-DEPLOYED" : "";
+      document.getElementById("bankrollValue").closest(".metric").classList.toggle("alert", bankrollOver);
       document.getElementById("exposureValue").dataset.current = String(Number(bankroll.deployed_pct || 0));
       document.getElementById("pnlStatus").textContent = pnl.status || "Paper Trading - awaiting resolution";
       document.getElementById("pnlGain").textContent = `GAIN MAX: $${fmt(pnl.est_max_gain_usd || 0, 2)}`;
