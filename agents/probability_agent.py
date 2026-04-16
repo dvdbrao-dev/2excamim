@@ -330,8 +330,11 @@ def call_openai_api(title: str, midpoint: float) -> tuple[dict[str, Any], int, i
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         return None, "OPENAI_API_KEY missing"
+    if not isinstance(title, str) or not title.strip():
+        return None, "market title missing"
 
-    system_prompt, user_prompt = build_prompt(title, midpoint)
+    normalized_title = title.strip()
+    system_prompt, user_prompt = build_prompt(normalized_title, midpoint)
     payload = {
         "model": MODEL_NAME,
         "max_tokens": 150,
@@ -533,6 +536,7 @@ def build_confirmed_event(
         "model": MODEL_NAME,
         "alpha": ALPHA,
         "market_midpoint": midpoint,
+        "p_market": midpoint,
         "estimated_probability": estimated_probability,
         "p_final": p_final,
         "confidence": confidence,
@@ -611,6 +615,7 @@ def build_veto_event(
         "model": MODEL_NAME,
         "alpha": ALPHA,
         "market_midpoint": candidate.midpoint,
+        "p_market": candidate.midpoint,
         "estimated_probability": estimated_probability,
         "p_final": p_final,
         "confidence": confidence,
@@ -692,8 +697,9 @@ def main() -> int:
     skipped_missing_snapshot = 0
 
     eligible_candidates: list[SignalCandidate] = []
+    processed_signal_ids = self_processed_signal_ids | already_confirmed | already_vetoed
     for signal_id in sorted(confirmed_signal_ids):
-        if signal_id in self_processed_signal_ids or signal_id in already_confirmed or signal_id in already_vetoed:
+        if signal_id in processed_signal_ids:
             continue
 
         context = contexts.get(signal_id)
@@ -726,8 +732,10 @@ def main() -> int:
     output_tokens_total = 0
     estimated_cost_total = 0.0
     last_api_error = ""
+    last_title_sample = ""
 
     for candidate in eligible_candidates:
+        last_title_sample = candidate.title[:60]
         if candidate.signal_id in vetoed_signal_ids:
             skipped_existing += 1
             continue
@@ -787,6 +795,7 @@ def main() -> int:
                 "skipped_api_failure": skipped_api_failure,
                 "skipped_unscorable": skipped_unscorable,
                 "last_api_error": last_api_error,
+                "last_title_sample": last_title_sample,
                 "input_tokens": input_tokens_total,
                 "output_tokens": output_tokens_total,
                 "estimated_cost_usd": round(estimated_cost_total, 8),
