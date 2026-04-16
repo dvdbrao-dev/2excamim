@@ -1,7 +1,7 @@
 {
   "pipeline": {
     "report_available": true,
-    "signals_seen": 4,
+    "signals_seen": 0,
     "signals_confirmed": 0,
     "execution_requests_sent": 0,
     "fills_persisted": 0,
@@ -17,7 +17,7 @@
   },
   "governance": {
     "readiness_available": true,
-    "experimental": 1,
+    "experimental": 0,
     "candidate": 0,
     "promoted": 0,
     "frozen": 0,

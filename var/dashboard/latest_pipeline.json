@@ -7,7 +7,7 @@
     "project_paper_ledger",
     "materialize_confirmation_readiness"
   ],
-  "signals_seen": 4,
+  "signals_seen": 0,
   "signals_generated": 0,
   "signals_confirmed": 0,
   "execution_requests_sent": 0,
@@ -16,5 +16,5 @@
   "open_positions": 0,
   "total_notional_spent": -0.0,
   "total_notional_received": -0.0,
-  "readiness_states_materialized": 1
+  "readiness_states_materialized": 0
 }

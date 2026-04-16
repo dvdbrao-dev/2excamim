@@ -1,66 +1,16 @@
 {
-  "generated_at": "2026-04-08T20:11:47.258874310Z",
+  "generated_at": "1970-01-01T00:00:00Z",
   "source_analysis": "run-paper-pipeline --eras=3 --window_size_seconds=0 --confidence_thresholds=[0.6] --horizons=[3600] --delta_threshold=0.02",
   "classification_rules": "frozen_if samples>=2 and freeze_candidate_count>=2 and freeze_candidate_count>promote_candidate_count; promoted_if samples>=2 and promote_candidate_count>=2 and promote_candidate_count>freeze_candidate_count and threshold_consistency_rate>=0.75 and horizon_consistency_rate>=0.75; candidate_if samples>=2 and promote_candidate_count>=1 and promote_candidate_count>freeze_candidate_count; otherwise experimental",
   "summary": {
-    "total": 1,
-    "experimental": 1,
+    "total": 0,
+    "experimental": 0,
     "candidate": 0,
     "promoted": 0,
     "frozen": 0,
-    "by_signal_name": [
-      {
-        "key": "research_snapshot",
-        "total": 1,
-        "experimental": 1,
-        "candidate": 0,
-        "promoted": 0,
-        "frozen": 0
-      }
-    ],
-    "by_direction": [
-      {
-        "key": "Yes",
-        "total": 1,
-        "experimental": 1,
-        "candidate": 0,
-        "promoted": 0,
-        "frozen": 0
-      }
-    ],
-    "by_source": [
-      {
-        "key": "Synthetic",
-        "total": 1,
-        "experimental": 1,
-        "candidate": 0,
-        "promoted": 0,
-        "frozen": 0
-      }
-    ]
+    "by_signal_name": [],
+    "by_direction": [],
+    "by_source": []
   },
-  "states": [
-    {
-      "signal_name": "research_snapshot",
-      "direction": "Yes",
-      "source": "Synthetic",
-      "readiness_status": "experimental",
-      "evidence": {
-        "validation_steps": 1,
-        "confirmed_sample_count": 2,
-        "promote_candidate_count": 0,
-        "review_count": 1,
-        "freeze_candidate_count": 0,
-        "favorable_rate": 0.0,
-        "unfavorable_rate": 0.0,
-        "average_validation_uplift": 0.0,
-        "threshold_consistency_rate": 1.0,
-        "horizon_consistency_rate": 1.0,
-        "proposed_policy_status": "review"
-      },
-      "last_updated_at": "2026-04-08T20:11:47.258874310Z",
-      "provenance": "run-paper-pipeline --eras=3 --window_size_seconds=0 --confidence_thresholds=[0.6] --horizons=[3600] --delta_threshold=0.02",
-      "rationale_summary": "experimental: insufficient or mixed evidence"
-    }
-  ]
+  "states": []
 }

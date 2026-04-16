@@ -31,6 +31,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     os.chdir(BASE)
-    port = int(os.environ.get("DASHBOARD_PORT", "8765"))
+    port = int(os.environ.get("DASHBOARD_PORT", "80"))
     print(f"EXCAMIM Dashboard → http://0.0.0.0:{port}")
     http.server.HTTPServer(("0.0.0.0", port), Handler).serve_forever()

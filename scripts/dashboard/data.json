@@ -1,5 +1,5 @@
 {
-  "updated": "2026-04-16 17:19 UTC",
+  "updated": "2026-04-16 18:11 UTC",
   "bot": {
     "name": "EXCAMIM",
     "emoji": "\u26a1",
@@ -15,13 +15,13 @@
     "available_eur": -920.0
   },
   "costs": {
-    "today_usd": 0.04,
-    "today_eur": 0.0368,
-    "weekly_usd": 0.04,
-    "weekly_eur": 0.0368,
-    "monthly_est_usd": 0.08,
+    "today_usd": 0.0022,
+    "today_eur": 0.002,
+    "weekly_usd": 0.0022,
+    "weekly_eur": 0.002,
+    "monthly_est_usd": 0.0,
     "per_signal": 5.5e-05,
-    "signals_processed": 734
+    "signals_processed": 40
   },
   "cost_chart": {
     "daily": [
@@ -79,7 +79,7 @@
       },
       {
         "date": "2026-04-16",
-        "cost": 0.040013
+        "cost": 0.002203
       }
     ],
     "weekly": [
@@ -113,7 +113,7 @@
       },
       {
         "week": "2026-W16",
-        "cost": 0.040013
+        "cost": 0.002203
       }
     ],
     "monthly": [
@@ -139,15 +139,15 @@
       },
       {
         "month": "2026-04",
-        "cost": 0.040013
+        "cost": 0.002203
       }
     ]
   },
   "pipeline": {
     "market.scored": 14,
-    "signal.generated": 1209,
-    "signal.confirmed": 1352,
-    "veto.raised": 104,
+    "signal.generated": 1328,
+    "signal.confirmed": 815,
+    "veto.raised": 6,
     "decision.formed": 8
   },
   "decisions": [
@@ -165,7 +165,7 @@
       "p_market": 0.0,
       "p_llm": 0.0,
       "side": "long_yes",
-      "occurred": "2026-04-16 12:55",
+      "occurred": "2026-04-16 17:55",
       "status": "ACTIVE",
       "size_hint": 250.0
     },
@@ -183,7 +183,7 @@
       "p_market": 0.0,
       "p_llm": 0.0,
       "side": "long_yes",
-      "occurred": "2026-04-16 12:55",
+      "occurred": "2026-04-16 17:55",
       "status": "ACTIVE",
       "size_hint": 250.0
     },
@@ -201,7 +201,7 @@
       "p_market": 0.0,
       "p_llm": 0.0,
       "side": "long_yes",
-      "occurred": "2026-04-16 12:55",
+      "occurred": "2026-04-16 17:55",
       "status": "ACTIVE",
       "size_hint": 250.0
     },
@@ -219,7 +219,7 @@
       "p_market": 0.0,
       "p_llm": 0.0,
       "side": "long_yes",
-      "occurred": "2026-04-16 12:55",
+      "occurred": "2026-04-16 17:55",
       "status": "ACTIVE",
       "size_hint": 250.0
     },
@@ -237,7 +237,7 @@
       "p_market": 0.0,
       "p_llm": 0.0,
       "side": "long_yes",
-      "occurred": "2026-04-16 12:55",
+      "occurred": "2026-04-16 17:55",
       "status": "ACTIVE",
       "size_hint": 250.0
     },
@@ -255,7 +255,7 @@
       "p_market": 0.0,
       "p_llm": 0.0,
       "side": "long_yes",
-      "occurred": "2026-04-16 12:55",
+      "occurred": "2026-04-16 17:55",
       "status": "ACTIVE",
       "size_hint": 250.0
     },
@@ -273,7 +273,7 @@
       "p_market": 0.0,
       "p_llm": 0.0,
       "side": "long_yes",
-      "occurred": "2026-04-16 12:55",
+      "occurred": "2026-04-16 17:55",
       "status": "ACTIVE",
       "size_hint": 250.0
     },
@@ -291,7 +291,7 @@
       "p_market": 0.0,
       "p_llm": 0.0,
       "side": "long_yes",
-      "occurred": "2026-04-16 12:55",
+      "occurred": "2026-04-16 17:55",
       "status": "ACTIVE",
       "size_hint": 250.0
     }
@@ -302,121 +302,37 @@
       "title": "Will England win the 2026 FIFA World Cup?",
       "reason_code": "probability_out_of_bounds",
       "p_final": 0.092,
-      "occurred": "2026-04-16 17:18"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.092,
-      "occurred": "2026-04-16 17:13"
+      "occurred": "2026-04-16 18:04"
     },
     {
       "title": "Will the Boston Celtics win the 2026 NBA Finals?",
       "reason_code": "probability_out_of_bounds",
       "p_final": 0.097,
-      "occurred": "2026-04-16 17:07"
+      "occurred": "2026-04-16 18:04"
     },
     {
       "title": "Will England win the 2026 FIFA World Cup?",
       "reason_code": "probability_out_of_bounds",
       "p_final": 0.08600000000000001,
-      "occurred": "2026-04-16 17:07"
+      "occurred": "2026-04-16 18:04"
+    },
+    {
+      "title": "Will the Boston Celtics win the 2026 NBA Finals?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.097,
+      "occurred": "2026-04-16 18:04"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.08600000000000001,
+      "occurred": "2026-04-16 18:04"
     },
     {
       "title": "Will England win the 2026 FIFA World Cup?",
       "reason_code": "probability_out_of_bounds",
       "p_final": 0.07400000000000001,
-      "occurred": "2026-04-16 17:02"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.08600000000000001,
-      "occurred": "2026-04-16 16:57"
-    },
-    {
-      "title": "Will the Boston Celtics win the 2026 NBA Finals?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.097,
-      "occurred": "2026-04-16 16:52"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.092,
-      "occurred": "2026-04-16 16:52"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.092,
-      "occurred": "2026-04-16 16:46"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.0862,
-      "occurred": "2026-04-16 16:41"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.092,
-      "occurred": "2026-04-16 16:36"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.092,
-      "occurred": "2026-04-16 16:31"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.092,
-      "occurred": "2026-04-16 16:25"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.08600000000000001,
-      "occurred": "2026-04-16 16:20"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.092,
-      "occurred": "2026-04-16 16:15"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.0742,
-      "occurred": "2026-04-16 16:10"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.0862,
-      "occurred": "2026-04-16 16:04"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.0862,
-      "occurred": "2026-04-16 15:58"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.0922,
-      "occurred": "2026-04-16 15:52"
-    },
-    {
-      "title": "Will Spain win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.0986,
-      "occurred": "2026-04-16 15:49"
+      "occurred": "2026-04-16 17:54"
     }
   ],
   "agents": [
@@ -477,7 +393,7 @@
   ],
   "timers": [
     {
-      "name": "llm-health",
+      "name": "dns-watchdog",
       "next": "Thu 2026-04-16",
       "status": "active"
     },
@@ -487,7 +403,7 @@
       "status": "active"
     },
     {
-      "name": "dns-watchdog",
+      "name": "llm-health",
       "next": "Thu 2026-04-16",
       "status": "active"
     },
@@ -503,14 +419,14 @@
     }
   ],
   "git_log": [
+    "1ce57b8 fix: repair_store always creates raw dir and discovery file",
+    "82a9fa1 fix: kelly sizing debug + dashboard bankroll display",
     "a0b6c36 feat: dashboard v3 - jarvis dark terminal redesign",
     "b40e988 fix: bankroll dedup + line chart diario/semanal/mensual",
     "672e5fa feat: dashboard v2 - bankroll, PnL, titles real, closed, dismissed",
     "28618e1 feat: EXCAMIM dashboard - mission control UI port 8765",
     "9d42609 fix: repair_store creates raw dir, telegram spam prevention",
-    "d8c1bce fix: tolerant snapshot validation - skip invalid lines instead of abort",
-    "e9c85c7 chore: remove telegram runtime state",
-    "4abfc3c feat: telegram notifications - signals, decisions, PnL, LLM cost, alerts"
+    "d8c1bce fix: tolerant snapshot validation - skip invalid lines instead of abort"
   ],
   "pnl": {
     "status": "paper_trading - awaiting resolution",
@@ -519,9 +435,9 @@
     "deployed_usd": 2000.0,
     "est_max_gain_usd": 0.0,
     "est_max_loss_usd": 2000.0,
-    "daily_llm_cost": 0.04,
-    "weekly_llm_cost": 0.04,
-    "monthly_llm_cost": 0.08,
+    "daily_llm_cost": 0.0022,
+    "weekly_llm_cost": 0.0022,
+    "monthly_llm_cost": 0.0,
     "daily_series": [
       {
         "date": "2026-04-10",
@@ -549,15 +465,15 @@
       },
       {
         "date": "2026-04-16",
-        "cost": 0.040013
+        "cost": 0.002203
       }
     ]
   },
   "system": {
     "disk_pct": 40,
-    "events_total": 2687,
+    "events_total": 2171,
     "decisions_total": 8,
-    "vetos_total": 104,
-    "signals_total": 1209
+    "vetos_total": 6,
+    "signals_total": 1328
   }
 }
