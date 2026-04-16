@@ -223,6 +223,41 @@ fn make_decision_formed(decision_id: &str, signal_id: &str, market_id: &str) -> 
     StoredEvent::try_from(envelope).unwrap()
 }
 
+fn make_decision_veto(decision_id: &str, market_id: &str) -> StoredEvent {
+    let envelope = EventEnvelope::new_veto_raised(
+        "exit-agent-v1",
+        Some(market_id.into()),
+        Linkage {
+            hypothesis_id: None,
+            signal_id: None,
+            decision_id: Some(decision_id.into()),
+            order_id: None,
+            position_id: None,
+            parent_event_id: Some("evt-parent".into()),
+            correlation_id: Some(market_id.into()),
+        },
+        Provenance {
+            source_kind: SourceKind::Runtime,
+            source_ref: Some("test".into()),
+            producer_run_id: Some("run-veto".into()),
+            actor: Some("tests".into()),
+            trace_id: Some("trace-veto".into()),
+            notes: None,
+        },
+        VetoRaised {
+            veto_id: format!("veto-{decision_id}"),
+            scope: VetoScope::Decision,
+            target_id: decision_id.into(),
+            reason_code: "exit_trigger".into(),
+            reason_text: Some("posterior decision veto".into()),
+            raised_by: "exit-agent-v1".into(),
+        },
+    )
+    .unwrap();
+
+    StoredEvent::try_from(envelope).unwrap()
+}
+
 fn make_fill_received(
     decision_id: &str,
     order_id: &str,
@@ -809,6 +844,103 @@ fn sizing_agent_applies_kelly_and_is_idempotent() {
 
     let second_events = store.read_all().unwrap();
     assert_eq!(second_events.len(), first_events.len());
+
+    cleanup(&[&store_path]);
+    let _ = fs::remove_dir_all(&watch_dir);
+}
+
+#[test]
+fn sizing_agent_skips_active_market_but_allows_vetoed_market() {
+    let watch_dir = temp_path("sizing-watch-active", "tmp");
+    let store_path = temp_path("sizing-store-active", "jsonl");
+    let snapshots_path = watch_dir.join("snapshots.jsonl");
+
+    fs::create_dir_all(&watch_dir).unwrap();
+    write_jsonl(
+        &snapshots_path,
+        &[
+            json!({
+                "market_id": "market-1",
+                "source": "Polymarket",
+                "title": "Active market",
+                "status": "Open",
+                "best_bid": 0.52,
+                "best_ask": 0.58,
+                "observed_at": "2026-04-14T12:00:00Z"
+            }),
+            json!({
+                "market_id": "market-2",
+                "source": "Polymarket",
+                "title": "Vetoed market",
+                "status": "Open",
+                "best_bid": 0.55,
+                "best_ask": 0.57,
+                "observed_at": "2026-04-14T12:05:00Z"
+            }),
+        ],
+    );
+
+    let store = JsonlEventStore::new(&store_path).unwrap();
+    store
+        .append_events(&[
+            make_decision_formed(
+                "decision-active",
+                "signal-existing-1",
+                "polymarket:market-1",
+            ),
+            make_signal_event("signal-2", "polymarket:market-1", 0.8),
+            make_signal_confirmed("signal-2", "polymarket:market-1", 0.91),
+            make_signal_event("signal-3", "polymarket:market-2", 0.8),
+            make_signal_confirmed("signal-3", "polymarket:market-2", 0.92),
+            make_decision_formed(
+                "decision-vetoed",
+                "signal-existing-2",
+                "polymarket:market-2",
+            ),
+            make_decision_veto("decision-vetoed", "polymarket:market-2"),
+        ])
+        .unwrap();
+
+    let sizing_args = vec![
+        "--store".into(),
+        store_path.display().to_string(),
+        "--watch-dir".into(),
+        watch_dir.display().to_string(),
+        "--bankroll".into(),
+        "1000.0".into(),
+    ];
+
+    let (code, stdout, stderr) = run_python_script("agents/sizing_agent.py", &sizing_args);
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.contains("\"decisions_written\":1"));
+    assert!(stdout.contains("\"skipped_active_decision\":1"));
+
+    let events = store.read_all().unwrap();
+    let decisions: Vec<_> = events
+        .iter()
+        .filter(|event| event.event_type.as_str() == "decision.formed")
+        .collect();
+    assert_eq!(decisions.len(), 3);
+
+    let vetoes: Vec<_> = events
+        .iter()
+        .filter(|event| {
+            event.event_type.as_str() == "veto.raised" && event.payload["scope"] == "Decision"
+        })
+        .collect();
+    assert_eq!(vetoes.len(), 1);
+
+    let market_1_decisions = decisions
+        .iter()
+        .filter(|event| event.aggregate_key.as_deref() == Some("polymarket:market-1"))
+        .count();
+    assert_eq!(market_1_decisions, 1);
+
+    let market_2_decisions = decisions
+        .iter()
+        .filter(|event| event.aggregate_key.as_deref() == Some("polymarket:market-2"))
+        .count();
+    assert_eq!(market_2_decisions, 2);
 
     cleanup(&[&store_path]);
     let _ = fs::remove_dir_all(&watch_dir);

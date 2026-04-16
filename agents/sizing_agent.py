@@ -247,6 +247,35 @@ def existing_event_ids(events: list[dict[str, Any]]) -> tuple[set[str], set[str]
     return decisions, vetoes
 
 
+def active_decision_markets(events: list[dict[str, Any]]) -> set[str]:
+    decision_indexes: dict[str, tuple[int, str]] = {}
+    decision_veto_indexes: dict[str, int] = {}
+
+    for index, event in enumerate(events):
+        event_type = event.get("event_type")
+        payload = event.get("payload") or {}
+
+        if event_type == "decision.formed":
+            decision_id = payload.get("decision_id")
+            aggregate_key = event.get("aggregate_key")
+            if isinstance(decision_id, str) and isinstance(aggregate_key, str):
+                decision_indexes[decision_id] = (index, aggregate_key)
+        elif event_type == "veto.raised" and payload.get("scope") == "Decision":
+            target_id = payload.get("target_id")
+            if isinstance(target_id, str):
+                previous = decision_veto_indexes.get(target_id)
+                if previous is None or index > previous:
+                    decision_veto_indexes[target_id] = index
+
+    active_markets: set[str] = set()
+    for decision_id, (decision_index, aggregate_key) in decision_indexes.items():
+        veto_index = decision_veto_indexes.get(decision_id)
+        if veto_index is None or veto_index <= decision_index:
+            active_markets.add(aggregate_key)
+
+    return active_markets
+
+
 def build_provenance(run_id: str, watch_dir: Path, market_id: str, notes: str) -> dict[str, Any]:
     return {
         "source_kind": "Runtime",
@@ -353,6 +382,7 @@ def main() -> int:
     generated, confirmed, vetoed = collect_candidates(events)
     snapshots = latest_snapshots(watch_dir)
     existing_decisions, existing_vetoes = existing_event_ids(events)
+    active_markets = active_decision_markets(events)
 
     eligible_candidates = [
         SignalCandidate(
@@ -372,6 +402,7 @@ def main() -> int:
     decisions_written = 0
     vetoes_written = 0
     skipped_missing_snapshot = 0
+    skipped_active_decision = 0
     skipped_already_written = 0
     skipped_not_eligible = len(generated) - len(eligible_candidates)
 
@@ -383,6 +414,11 @@ def main() -> int:
 
         candidate.market_price = snapshot.midpoint
         candidate.bankroll = float(args.bankroll)
+
+        if candidate.instrument in active_markets:
+            skipped_active_decision += 1
+            continue
+
         size = kelly_size(candidate.confirmation_score, snapshot.midpoint, float(args.bankroll))
 
         if size <= 0:
@@ -407,6 +443,7 @@ def main() -> int:
         append_event(store_path, build_decision_event(candidate, run_id, watch_dir, size))
         decisions_written += 1
         existing_decisions.add(decision_id)
+        active_markets.add(candidate.instrument)
 
     print(
         json.dumps(
@@ -421,6 +458,7 @@ def main() -> int:
                 "decisions_written": decisions_written,
                 "vetoes_written": vetoes_written,
                 "skipped_missing_snapshot": skipped_missing_snapshot,
+                "skipped_active_decision": skipped_active_decision,
                 "skipped_already_written": skipped_already_written,
                 "skipped_not_eligible": skipped_not_eligible,
             },
