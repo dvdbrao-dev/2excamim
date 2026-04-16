@@ -25,4 +25,14 @@ research_prediction_markets/**/__pycache__/
 research_prediction_markets/**/*.pyc
 research_prediction_markets/output/signals/latest_signals.parquet
 
+# Data files - no subir a git
+var/market-watch/raw/
+var/market-watch/snapshots.jsonl
+var/market-watch/snapshots.jsonl.tmp
+var/events.jsonl
+var/events.jsonl.bak
+var/market_snapshots.jsonl
+agents/__pycache__/
+*.pyc
+
 research_prediction_markets/output/signals/latest_signals.parquet
