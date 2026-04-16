@@ -25,4 +25,6 @@ fi
 if [ "$FAILURES" -gt 50 ]; then
   logger "EXCAMIM ALERT: OpenAI API failures=$FAILURES in last 24h - check credits"
   echo "EXCAMIM ALERT: OpenAI API failures=$FAILURES" | wall
+  python3 /root/2excamim/agents/telegram_agent.py \
+    --check-api "$FAILURES" 2>&1
 fi

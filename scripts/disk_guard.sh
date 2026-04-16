@@ -14,4 +14,6 @@ USAGE=$(df / 2>/dev/null | tail -1 | awk '{print $5}' | tr -d '%')
 if [ -n "$USAGE" ] && [ "$USAGE" -gt 80 ]; then
   logger "EXCAMIM ALERT: disk usage ${USAGE}%"
   echo "EXCAMIM ALERT: disk ${USAGE}% full" | wall
+  python3 /root/2excamim/agents/telegram_agent.py \
+    --check-disk "$USAGE" 2>&1
 fi

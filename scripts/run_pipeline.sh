@@ -9,3 +9,4 @@ python3 agents/confirmation_agent.py --store ./var/events.jsonl
 python3 agents/probability_agent.py --store ./var/events.jsonl --watch-dir ./var/market-watch --max-signals 20
 python3 agents/veto_agent.py --store ./var/events.jsonl --probability-floor 0.05
 python3 agents/sizing_agent.py --store ./var/events.jsonl --watch-dir ./var/market-watch --bankroll 1000.0
+python3 agents/telegram_agent.py --store ./var/events.jsonl 2>&1
