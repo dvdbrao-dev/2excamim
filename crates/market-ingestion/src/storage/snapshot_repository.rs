@@ -50,6 +50,9 @@ impl FilesystemSnapshotRepository {
 
     fn write_all(&self, snapshots: &[MarketSnapshot]) -> Result<(), StorageError> {
         let temp_path = temp_store_path(&self.path)?;
+        if let Some(parent) = temp_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
 
         let result = (|| -> Result<(), StorageError> {
             let mut file = OpenOptions::new()
