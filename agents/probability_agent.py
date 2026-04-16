@@ -39,7 +39,7 @@ MODEL_NAME = "gpt-4o-mini"
 OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions"
 DEFAULT_STORE = Path("./var/events.jsonl")
 DEFAULT_WATCH_DIR = Path("./var/market-watch")
-DEFAULT_MAX_SIGNALS = 20
+DEFAULT_MAX_SIGNALS = 50
 ALPHA = 0.6
 MIN_FINAL_PROBABILITY = 0.10
 MAX_FINAL_PROBABILITY = 0.90
@@ -712,7 +712,8 @@ def main() -> int:
         key=lambda candidate: (
             candidate.confirmation_at or candidate.generated_at or datetime.min.replace(tzinfo=timezone.utc),
             candidate.signal_id,
-        )
+        ),
+        reverse=True,
     )
     eligible_candidates = eligible_candidates[: args.max_signals]
 
