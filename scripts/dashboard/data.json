@@ -1,73 +1,286 @@
 {
-  "updated": "2026-04-16 16:20 UTC",
+  "updated": "2026-04-16 16:39 UTC",
   "bot": {
     "name": "EXCAMIM",
     "emoji": "\u26a1",
     "status": "online"
   },
   "alerts": [],
+  "bankroll": {
+    "bankroll_total": 1000.0,
+    "deployed_usd": 2000.0,
+    "deployed_pct": 200.0,
+    "deployed_eur": 1840.0,
+    "available_usd": -1000.0,
+    "available_eur": -920.0
+  },
   "costs": {
-    "today_usd": 0.0352,
-    "today_eur": 0.0324,
+    "today_usd": 0.0366,
+    "today_eur": 0.0336,
+    "weekly_usd": 0.0366,
+    "weekly_eur": 0.0336,
     "monthly_est_usd": 0.07,
     "per_signal": 5.5e-05,
-    "signals_processed": 645
+    "signals_processed": 670
   },
   "pipeline": {
     "market.scored": 14,
-    "signal.generated": 1066,
-    "signal.confirmed": 1188,
-    "veto.raised": 91,
+    "signal.generated": 1105,
+    "signal.confirmed": 1234,
+    "veto.raised": 94,
     "decision.formed": 8
   },
   "decisions": [
     {
-      "market": "0xf7b5491e70b477d451",
-      "size": 250.0,
+      "decision_id": "decision-research-0xf7b5491e70b477d451afe7d9c1fde4bf1a927e69ff289d294b96df164f6c10f0-vwap_reversion-20260415T232611_636Z-long_yes",
+      "signal_id": "research-0xf7b5491e70b477d451afe7d9c1fde4bf1a927e69ff289d294b96df164f6c10f0-vwap_reversion-20260415T232611_636Z-long_yes",
+      "title": "Will the Carolina Hurricanes win the 2026 NHL Stanley Cup?",
+      "market": "0xf7b5491e70b477d451afe7d9c1fde4bf1a927e69ff289d294b96df164f6c10f0",
+      "kelly_usd": 250.0,
+      "kelly_eur": 230.0,
+      "p_final": 0.0,
+      "direction": "n/a",
+      "p_market": 0.0,
+      "p_llm": 0.0,
+      "side": "long_yes",
       "occurred": "2026-04-16 12:55",
-      "status": "ACTIVE"
+      "status": "ACTIVE",
+      "size_hint": 250.0
     },
     {
-      "market": "0xbdd688664b4f3cf7ec",
-      "size": 250.0,
+      "decision_id": "decision-research-0xbdd688664b4f3cf7ec4ec011607934fe8ae720c08353fc14a6e9dfbf6bbcf11a-vwap_reversion-20260415T232611_636Z-long_yes",
+      "signal_id": "research-0xbdd688664b4f3cf7ec4ec011607934fe8ae720c08353fc14a6e9dfbf6bbcf11a-vwap_reversion-20260415T232611_636Z-long_yes",
+      "title": "Will the Tampa Bay Lightning win the 2026 NHL Stanley Cup?",
+      "market": "0xbdd688664b4f3cf7ec4ec011607934fe8ae720c08353fc14a6e9dfbf6bbcf11a",
+      "kelly_usd": 250.0,
+      "kelly_eur": 230.0,
+      "p_final": 0.0,
+      "direction": "n/a",
+      "p_market": 0.0,
+      "p_llm": 0.0,
+      "side": "long_yes",
       "occurred": "2026-04-16 12:55",
-      "status": "ACTIVE"
+      "status": "ACTIVE",
+      "size_hint": 250.0
     },
     {
-      "market": "0x13e1cc703a120883a7",
-      "size": 250.0,
+      "decision_id": "decision-research-0x13e1cc703a120883a709d3bb29707097952845d61ca6793ea2b4328bae2a7451-vwap_reversion-20260415T232611_636Z-long_yes",
+      "signal_id": "research-0x13e1cc703a120883a709d3bb29707097952845d61ca6793ea2b4328bae2a7451-vwap_reversion-20260415T232611_636Z-long_yes",
+      "title": "Will the Boston Celtics win the 2026 NBA Finals?",
+      "market": "0x13e1cc703a120883a709d3bb29707097952845d61ca6793ea2b4328bae2a7451",
+      "kelly_usd": 250.0,
+      "kelly_eur": 230.0,
+      "p_final": 0.0,
+      "direction": "n/a",
+      "p_market": 0.0,
+      "p_llm": 0.0,
+      "side": "long_yes",
       "occurred": "2026-04-16 12:55",
-      "status": "ACTIVE"
+      "status": "ACTIVE",
+      "size_hint": 250.0
     },
     {
-      "market": "0xb6b3d7a2037b3faa7e",
-      "size": 250.0,
+      "decision_id": "decision-research-0xb6b3d7a2037b3faa7e1306d741840d453432902d73cc9a146a035e40271eae73-vwap_reversion-20260415T232611_636Z-long_yes",
+      "signal_id": "research-0xb6b3d7a2037b3faa7e1306d741840d453432902d73cc9a146a035e40271eae73-vwap_reversion-20260415T232611_636Z-long_yes",
+      "title": "Will the San Antonio Spurs win the 2026 NBA Finals?",
+      "market": "0xb6b3d7a2037b3faa7e1306d741840d453432902d73cc9a146a035e40271eae73",
+      "kelly_usd": 250.0,
+      "kelly_eur": 230.0,
+      "p_final": 0.0,
+      "direction": "n/a",
+      "p_market": 0.0,
+      "p_llm": 0.0,
+      "side": "long_yes",
       "occurred": "2026-04-16 12:55",
-      "status": "ACTIVE"
+      "status": "ACTIVE",
+      "size_hint": 250.0
     },
     {
-      "market": "0xfc6260666d020a912a",
-      "size": 250.0,
+      "decision_id": "decision-research-0xfc6260666d020a912a87d9000eff5116d2adfb8c30aba543427a4c1f1411f1a0-vwap_reversion-20260415T232611_636Z-long_yes",
+      "signal_id": "research-0xfc6260666d020a912a87d9000eff5116d2adfb8c30aba543427a4c1f1411f1a0-vwap_reversion-20260415T232611_636Z-long_yes",
+      "title": "MegaETH market cap (FDV) >$2B one day after launch?",
+      "market": "0xfc6260666d020a912a87d9000eff5116d2adfb8c30aba543427a4c1f1411f1a0",
+      "kelly_usd": 250.0,
+      "kelly_eur": 230.0,
+      "p_final": 0.0,
+      "direction": "n/a",
+      "p_market": 0.0,
+      "p_llm": 0.0,
+      "side": "long_yes",
       "occurred": "2026-04-16 12:55",
-      "status": "ACTIVE"
+      "status": "ACTIVE",
+      "size_hint": 250.0
     },
     {
-      "market": "0x7976b8dbacf9077eb1",
-      "size": 250.0,
+      "decision_id": "decision-research-0x7976b8dbacf9077eb1453a62bcefd6ab2df199acd28aad276ff0d920d6992892-vwap_reversion-20260415T232611_636Z-long_yes",
+      "signal_id": "research-0x7976b8dbacf9077eb1453a62bcefd6ab2df199acd28aad276ff0d920d6992892-vwap_reversion-20260415T232611_636Z-long_yes",
+      "title": "Will Spain win the 2026 FIFA World Cup?",
+      "market": "0x7976b8dbacf9077eb1453a62bcefd6ab2df199acd28aad276ff0d920d6992892",
+      "kelly_usd": 250.0,
+      "kelly_eur": 230.0,
+      "p_final": 0.0,
+      "direction": "n/a",
+      "p_market": 0.0,
+      "p_llm": 0.0,
+      "side": "long_yes",
       "occurred": "2026-04-16 12:55",
-      "status": "ACTIVE"
+      "status": "ACTIVE",
+      "size_hint": 250.0
     },
     {
-      "market": "0x375409bc5eeeff961e",
-      "size": 250.0,
+      "decision_id": "decision-research-0x375409bc5eeeff961e82b479caeccc20f33d15738e5bce1186d628aa3d9dfb1f-vwap_reversion-20260415T232611_636Z-long_yes",
+      "signal_id": "research-0x375409bc5eeeff961e82b479caeccc20f33d15738e5bce1186d628aa3d9dfb1f-vwap_reversion-20260415T232611_636Z-long_yes",
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "market": "0x375409bc5eeeff961e82b479caeccc20f33d15738e5bce1186d628aa3d9dfb1f",
+      "kelly_usd": 250.0,
+      "kelly_eur": 230.0,
+      "p_final": 0.0,
+      "direction": "n/a",
+      "p_market": 0.0,
+      "p_llm": 0.0,
+      "side": "long_yes",
       "occurred": "2026-04-16 12:55",
-      "status": "ACTIVE"
+      "status": "ACTIVE",
+      "size_hint": 250.0
     },
     {
-      "market": "0x9b6fef249040fd17e9",
-      "size": 250.0,
+      "decision_id": "decision-research-0x9b6fef249040fd17e9c107955b37ac2c3e923509b6b0ff01cc463a331ddeb894-vwap_reversion-20260415T232611_636Z-long_yes",
+      "signal_id": "research-0x9b6fef249040fd17e9c107955b37ac2c3e923509b6b0ff01cc463a331ddeb894-vwap_reversion-20260415T232611_636Z-long_yes",
+      "title": "Will France win the 2026 FIFA World Cup?",
+      "market": "0x9b6fef249040fd17e9c107955b37ac2c3e923509b6b0ff01cc463a331ddeb894",
+      "kelly_usd": 250.0,
+      "kelly_eur": 230.0,
+      "p_final": 0.0,
+      "direction": "n/a",
+      "p_market": 0.0,
+      "p_llm": 0.0,
+      "side": "long_yes",
       "occurred": "2026-04-16 12:55",
-      "status": "ACTIVE"
+      "status": "ACTIVE",
+      "size_hint": 250.0
+    }
+  ],
+  "closed_decisions": [],
+  "vetoed_signals": [
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.092,
+      "occurred": "2026-04-16 16:36"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.092,
+      "occurred": "2026-04-16 16:31"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.092,
+      "occurred": "2026-04-16 16:25"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.08600000000000001,
+      "occurred": "2026-04-16 16:20"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.092,
+      "occurred": "2026-04-16 16:15"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0742,
+      "occurred": "2026-04-16 16:10"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0862,
+      "occurred": "2026-04-16 16:04"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0862,
+      "occurred": "2026-04-16 15:58"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0922,
+      "occurred": "2026-04-16 15:52"
+    },
+    {
+      "title": "Will Spain win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0986,
+      "occurred": "2026-04-16 15:49"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0922,
+      "occurred": "2026-04-16 15:49"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0742,
+      "occurred": "2026-04-16 15:49"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0742,
+      "occurred": "2026-04-16 15:37"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0862,
+      "occurred": "2026-04-16 15:24"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0922,
+      "occurred": "2026-04-16 15:13"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0922,
+      "occurred": "2026-04-16 15:08"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0922,
+      "occurred": "2026-04-16 15:03"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0922,
+      "occurred": "2026-04-16 14:56"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0918,
+      "occurred": "2026-04-16 14:51"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.07980000000000001,
+      "occurred": "2026-04-16 14:46"
     }
   ],
   "agents": [
@@ -128,7 +341,7 @@
   ],
   "timers": [
     {
-      "name": "llm-health",
+      "name": "dns-watchdog",
       "next": "Thu 2026-04-16",
       "status": "active"
     },
@@ -138,7 +351,7 @@
       "status": "active"
     },
     {
-      "name": "dns-watchdog",
+      "name": "llm-health",
       "next": "Thu 2026-04-16",
       "status": "active"
     },
@@ -154,20 +367,61 @@
     }
   ],
   "git_log": [
+    "28618e1 feat: EXCAMIM dashboard - mission control UI port 8765",
     "9d42609 fix: repair_store creates raw dir, telegram spam prevention",
     "d8c1bce fix: tolerant snapshot validation - skip invalid lines instead of abort",
     "e9c85c7 chore: remove telegram runtime state",
     "4abfc3c feat: telegram notifications - signals, decisions, PnL, LLM cost, alerts",
     "354aff0 feat: full resilience system - dns watchdog, llm alarm, disk guard, daily health",
     "6c5eb40 chore: session 3 complete - stable pipeline, clean edge analysis",
-    "6f25ab3 fix: create parent dir before temp file in write_all",
-    "32370ac fix: definitive store repair - repair_store.py, atomic write validation"
+    "6f25ab3 fix: create parent dir before temp file in write_all"
   ],
+  "pnl": {
+    "status": "paper_trading - awaiting resolution",
+    "decisions_active": 8,
+    "decisions_closed": 0,
+    "deployed_usd": 2000.0,
+    "est_max_gain_usd": 0.0,
+    "est_max_loss_usd": 2000.0,
+    "daily_llm_cost": 0.0366,
+    "weekly_llm_cost": 0.0366,
+    "monthly_llm_cost": 0.07,
+    "daily_series": [
+      {
+        "date": "2026-04-10",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-11",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-12",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-13",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-14",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-15",
+        "cost": 0.0
+      },
+      {
+        "date": "2026-04-16",
+        "cost": 0.036555
+      }
+    ]
+  },
   "system": {
     "disk_pct": 40,
-    "events_total": 2367,
+    "events_total": 2455,
     "decisions_total": 8,
-    "vetos_total": 91,
-    "signals_total": 1066
+    "vetos_total": 94,
+    "signals_total": 1105
   }
 }

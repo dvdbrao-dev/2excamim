@@ -15,8 +15,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path == "/api/refresh":
             now = time.time()
             if now - last_refresh > DEBOUNCE:
-                subprocess.run(["bash", str(BASE / "refresh.sh")])
                 last_refresh = now
+                subprocess.Popen(["bash", str(BASE / "refresh.sh")])
             data = (BASE / "data.json").read_text()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
