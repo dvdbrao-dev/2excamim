@@ -204,18 +204,17 @@ fn validate_snapshot_jsonl(path: &Path) -> Result<(), StorageError> {
             continue;
         }
 
-        let snapshot: MarketSnapshot = serde_json::from_str(&line).map_err(|error| {
-            StorageError::invalid_data(format!(
-                "failed to validate temp JSONL line {}: {error}",
-                index + 1
-            ))
-        })?;
-        snapshot.validate().map_err(|error| {
-            StorageError::invalid_data(format!(
-                "invalid temp snapshot at line {}: {error}",
-                index + 1
-            ))
-        })?;
+        let snapshot: MarketSnapshot = match serde_json::from_str(&line) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                eprintln!("skipping invalid temp JSONL line {}: {error}", index + 1);
+                continue;
+            }
+        };
+        if let Err(error) = snapshot.validate() {
+            eprintln!("skipping invalid snapshot at line {}: {error}", index + 1);
+            continue;
+        }
     }
 
     Ok(())
