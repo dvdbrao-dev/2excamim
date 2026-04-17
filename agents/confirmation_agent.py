@@ -30,6 +30,7 @@ DEFAULT_THRESHOLD = 0.6
 class SignalCandidate:
     signal_id: str
     strength: float
+    signal_kind: str
     aggregate_key: str | None
     hypothesis_id: str | None
     correlation_id: str | None
@@ -115,6 +116,24 @@ def collect_candidates(
             generated[signal_id] = SignalCandidate(
                 signal_id=signal_id,
                 strength=float(strength),
+                signal_kind="market",
+                aggregate_key=event.get("aggregate_key"),
+                hypothesis_id=linkage.get("hypothesis_id"),
+                correlation_id=linkage.get("correlation_id"),
+                parent_event_id=linkage.get("parent_event_id"),
+            )
+        elif event_type == "crypto.signal.generated":
+            signal_id = payload.get("signal_id")
+            signal_strength = payload.get("signal_strength")
+            if not isinstance(signal_id, str) or not isinstance(signal_strength, (int, float)):
+                continue
+            if float(signal_strength) < 0.4:
+                continue
+
+            generated[signal_id] = SignalCandidate(
+                signal_id=signal_id,
+                strength=float(signal_strength),
+                signal_kind="crypto",
                 aggregate_key=event.get("aggregate_key"),
                 hypothesis_id=linkage.get("hypothesis_id"),
                 correlation_id=linkage.get("correlation_id"),
@@ -132,6 +151,13 @@ def collect_candidates(
 def build_signal_confirmed_event(
     candidate: SignalCandidate, run_id: str, threshold: float
 ) -> dict[str, Any]:
+    if candidate.signal_kind == "crypto":
+        confirmation_reason = "crypto_signal_strength>=0.4"
+        threshold_used = 0.4
+    else:
+        confirmation_reason = f"strength>={threshold}"
+        threshold_used = threshold
+
     return {
         "event_id": str(uuid.uuid4()),
         "event_type": "signal.confirmed",
@@ -155,12 +181,15 @@ def build_signal_confirmed_event(
             "producer_run_id": run_id,
             "actor": AGENT_ID,
             "trace_id": f"{run_id}:{candidate.signal_id}",
-            "notes": f"auto-confirmed strength={candidate.strength:.6f} threshold={threshold:.6f}",
+            "notes": (
+                f"auto-confirmed kind={candidate.signal_kind} "
+                f"strength={candidate.strength:.6f} threshold={threshold_used:.6f}"
+            ),
         },
         "payload": {
             "signal_id": candidate.signal_id,
             "confirmed_by": AGENT_ID,
-            "confirmation_reason": f"strength>={threshold}",
+            "confirmation_reason": confirmation_reason,
             "confirmation_score": candidate.strength,
         },
     }
@@ -205,7 +234,8 @@ def main() -> int:
     eligible_candidates = [
         candidate
         for candidate in generated.values()
-        if normalized_market_key(candidate.aggregate_key) in scored_markets
+        if candidate.signal_kind == "crypto"
+        or normalized_market_key(candidate.aggregate_key) in scored_markets
     ]
     to_confirm = [
         candidate
@@ -217,7 +247,7 @@ def main() -> int:
     cli_successes = 0
     appended = 0
     for candidate in to_confirm:
-        if confirm_via_cli(store_path, candidate):
+        if candidate.signal_kind != "crypto" and confirm_via_cli(store_path, candidate):
             cli_successes += 1
             continue
 
@@ -235,6 +265,9 @@ def main() -> int:
                     "market_scored_markets": len(scored_markets),
                     "eligible_candidates": len(eligible_candidates),
                     "blocked_by_missing_market_score": blocked_by_missing_market_score,
+                    "crypto_candidates": len(
+                        [candidate for candidate in generated.values() if candidate.signal_kind == "crypto"]
+                    ),
                     "already_confirmed": len(eligible_candidates) - len(to_confirm),
                     "confirmed_via_cli": cli_successes,
                     "confirmed_via_direct_append": appended,

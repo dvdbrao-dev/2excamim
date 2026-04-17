@@ -37,6 +37,7 @@ class SignalCandidate:
     side: str | None
     market_price: float = 0.0
     bankroll: float = 0.0
+    signal_kind: str = "market"
 
 
 @dataclass
@@ -195,6 +196,128 @@ def collect_candidates(
                 vetoed.add(target_id)
 
     return generated, confirmed, vetoed
+
+
+def collect_crypto_signals(events: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    signals: dict[str, dict[str, Any]] = {}
+
+    for event in events:
+        if event.get("event_type") != "crypto.signal.generated":
+            continue
+
+        payload = event.get("payload") or {}
+        linkage = event.get("linkage") or {}
+        signal_id = payload.get("signal_id")
+        symbol = payload.get("symbol")
+        trend = payload.get("trend")
+        signal_strength = payload.get("signal_strength")
+        if (
+            not isinstance(signal_id, str)
+            or not signal_id.strip()
+            or not isinstance(symbol, str)
+            or not symbol.strip()
+            or trend not in {"UP", "DOWN"}
+            or not isinstance(signal_strength, (int, float))
+        ):
+            continue
+
+        signals[signal_id] = {
+            "signal_id": signal_id,
+            "symbol": symbol,
+            "trend": trend,
+            "signal_strength": float(signal_strength),
+            "aggregate_key": event.get("aggregate_key"),
+            "hypothesis_id": linkage.get("hypothesis_id"),
+            "correlation_id": linkage.get("correlation_id"),
+            "parent_event_id": linkage.get("parent_event_id"),
+        }
+
+    return signals
+
+
+def choose_crypto_match(matched_markets: Any) -> dict[str, Any] | None:
+    if not isinstance(matched_markets, list):
+        return None
+
+    candidates: list[tuple[int, float, str, dict[str, Any]]] = []
+    for market in matched_markets:
+        if not isinstance(market, dict):
+            continue
+        market_id = market.get("market_id")
+        title = market.get("title")
+        midpoint = market.get("midpoint")
+        if not isinstance(market_id, str) or not market_id.strip():
+            continue
+        if not isinstance(title, str) or not title.strip():
+            continue
+        if not isinstance(midpoint, (int, float)) or not math.isfinite(float(midpoint)):
+            continue
+
+        coherent = 1 if market.get("coherent") is True else 0
+        candidates.append((coherent, float(midpoint), title.strip().lower(), market))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+    return candidates[0][3]
+
+
+def collect_crypto_matches(events: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    matches: dict[str, tuple[datetime, dict[str, Any]]] = {}
+
+    for event in events:
+        if event.get("event_type") != "crypto.market.matched":
+            continue
+
+        payload = event.get("payload") or {}
+        signal_id = payload.get("signal_id")
+        chosen = choose_crypto_match(payload.get("matched_markets"))
+        if not isinstance(signal_id, str) or not signal_id.strip() or chosen is None:
+            continue
+
+        observed_at = parse_timestamp(event.get("occurred_at")) or datetime.min.replace(
+            tzinfo=timezone.utc
+        )
+        current = matches.get(signal_id)
+        if current is None or observed_at > current[0]:
+            matches[signal_id] = (observed_at, chosen)
+
+    return {signal_id: match for signal_id, (_, match) in matches.items()}
+
+
+def build_crypto_candidate(
+    signal: dict[str, Any], match: dict[str, Any], confirmation_score: float
+) -> SignalCandidate | None:
+    market_id = match.get("market_id")
+    title = match.get("title")
+    midpoint = match.get("midpoint")
+    suggested_direction = match.get("suggested_direction")
+    if (
+        not isinstance(market_id, str)
+        or not market_id.strip()
+        or not isinstance(title, str)
+        or not title.strip()
+        or not isinstance(midpoint, (int, float))
+        or not math.isfinite(float(midpoint))
+        or not isinstance(suggested_direction, str)
+        or not suggested_direction.strip()
+    ):
+        return None
+
+    return SignalCandidate(
+        signal_id=signal["signal_id"],
+        market_id=market_id,
+        instrument=f"polymarket:{market_id}",
+        hypothesis_id=signal.get("hypothesis_id"),
+        correlation_id=signal.get("correlation_id"),
+        parent_event_id=signal.get("parent_event_id"),
+        confirmation_score=confirmation_score,
+        side=suggested_direction,
+        market_price=float(midpoint),
+        bankroll=0.0,
+        signal_kind="crypto",
+    )
 
 
 def kelly_size(p_win: float, market_price: float, bankroll: float, max_fraction: float = 0.25) -> float:
@@ -434,6 +557,8 @@ def main() -> int:
 
     events = load_jsonl(store_path)
     generated, confirmed, vetoed = collect_candidates(events)
+    crypto_signals = collect_crypto_signals(events)
+    crypto_matches = collect_crypto_matches(events)
     snapshots = latest_snapshots(watch_dir)
     existing_decisions, existing_vetoes = existing_event_ids(events)
     active_markets = active_decision_markets(events)
@@ -450,10 +575,22 @@ def main() -> int:
             parent_event_id=candidate.parent_event_id,
             confirmation_score=confirmed[signal_id],
             side=candidate.side,
+            signal_kind="market",
         )
         for signal_id, candidate in generated.items()
         if signal_id in confirmed and signal_id not in vetoed
     ]
+
+    crypto_eligible_candidates = []
+    for signal_id, signal in crypto_signals.items():
+        if signal_id not in confirmed or signal_id in vetoed:
+            continue
+        match = crypto_matches.get(signal_id)
+        if match is None:
+            continue
+        candidate = build_crypto_candidate(signal, match, confirmed[signal_id])
+        if candidate is not None:
+            crypto_eligible_candidates.append(candidate)
 
     decisions_written = 0
     vetoes_written = 0
@@ -461,21 +598,32 @@ def main() -> int:
     skipped_active_decision = 0
     skipped_already_written = 0
     skipped_not_eligible = len(generated) - len(eligible_candidates)
+    skipped_crypto_not_eligible = len(crypto_signals) - len(crypto_eligible_candidates)
 
-    for candidate in eligible_candidates:
-        snapshot = snapshots.get(candidate.market_id)
-        if snapshot is None:
-            skipped_missing_snapshot += 1
+    for candidate in eligible_candidates + crypto_eligible_candidates:
+        if candidate.signal_kind == "market":
+            snapshot = snapshots.get(candidate.market_id)
+            if snapshot is None:
+                skipped_missing_snapshot += 1
+                continue
+
+            candidate.market_price = snapshot.midpoint
+        elif candidate.market_price <= 0:
             continue
 
-        candidate.market_price = snapshot.midpoint
         candidate.bankroll = float(args.bankroll)
 
         if candidate.instrument in active_markets:
             skipped_active_decision += 1
             continue
 
-        size = kelly_size(candidate.confirmation_score, snapshot.midpoint, float(args.bankroll), max_fraction=0.05)
+        max_fraction = 0.03 if candidate.signal_kind == "crypto" else 0.05
+        size = kelly_size(
+            candidate.confirmation_score,
+            candidate.market_price,
+            float(args.bankroll),
+            max_fraction=max_fraction,
+        )
 
         if size <= 0:
             veto_id = deterministic_veto_id(candidate.signal_id)
@@ -483,7 +631,7 @@ def main() -> int:
                 skipped_already_written += 1
                 continue
             reason_text = (
-                f"kelly size is zero for market_price={snapshot.midpoint:.6f} "
+                f"kelly size is zero for market_price={candidate.market_price:.6f} "
                 f"p_win={candidate.confirmation_score:.6f} bankroll={float(args.bankroll):.2f}"
             )
             append_event(store_path, build_veto_event(candidate, run_id, watch_dir, reason_text))
@@ -515,12 +663,15 @@ def main() -> int:
                 "bankroll": float(args.bankroll),
                 "generated_signals": len(generated),
                 "eligible_signals": len(eligible_candidates),
+                "crypto_signals": len(crypto_signals),
+                "crypto_eligible_signals": len(crypto_eligible_candidates),
                 "decisions_written": decisions_written,
                 "vetoes_written": vetoes_written,
                 "skipped_missing_snapshot": skipped_missing_snapshot,
                 "skipped_active_decision": skipped_active_decision,
                 "skipped_already_written": skipped_already_written,
                 "skipped_not_eligible": skipped_not_eligible,
+                "skipped_crypto_not_eligible": skipped_crypto_not_eligible,
             },
             separators=(",", ":"),
         )

@@ -75,6 +75,18 @@ class VetoContext:
     title: str
 
 
+@dataclass
+class CryptoSignalContext:
+    event_id: str
+    signal_id: str
+    symbol: str
+    price_now: float
+    change_pct: float
+    trend: str
+    signal_strength: float
+    n_markets: int
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Send Telegram notifications for EXCAMIM.")
     parser.add_argument("--store", default=str(DEFAULT_STORE), help="Path to the JSONL store.")
@@ -404,6 +416,79 @@ def collect_veto_contexts(
     return contexts
 
 
+def collect_crypto_signal_contexts(events: list[dict[str, Any]]) -> dict[str, CryptoSignalContext]:
+    contexts: dict[str, tuple[datetime, CryptoSignalContext]] = {}
+
+    for event in events:
+        event_type = event.get("event_type")
+        payload = event.get("payload") or {}
+        occurred_at = parse_timestamp(event.get("occurred_at")) or datetime.min.replace(
+            tzinfo=timezone.utc
+        )
+
+        if event_type == "crypto.signal.generated":
+            signal_id = payload.get("signal_id")
+            symbol = payload.get("symbol")
+            price_now = numeric_value(payload.get("price_now"))
+            change_pct = numeric_value(payload.get("change_pct"))
+            trend = payload.get("trend")
+            signal_strength = numeric_value(payload.get("signal_strength"))
+            if (
+                not isinstance(signal_id, str)
+                or not signal_id.strip()
+                or not isinstance(symbol, str)
+                or not symbol.strip()
+                or price_now is None
+                or change_pct is None
+                or trend not in {"UP", "DOWN"}
+                or signal_strength is None
+            ):
+                continue
+
+            current = contexts.get(signal_id)
+            candidate = CryptoSignalContext(
+                event_id=str(event.get("event_id") or ""),
+                signal_id=signal_id,
+                symbol=symbol.strip(),
+                price_now=price_now,
+                change_pct=change_pct,
+                trend=trend,
+                signal_strength=signal_strength,
+                n_markets=0,
+            )
+            if current is None or occurred_at > current[0]:
+                contexts[signal_id] = (occurred_at, candidate)
+            continue
+
+        if event_type != "crypto.market.matched":
+            continue
+
+        signal_id = payload.get("signal_id")
+        matched_markets = payload.get("matched_markets")
+        if not isinstance(signal_id, str) or not signal_id.strip() or not isinstance(matched_markets, list):
+            continue
+
+        current = contexts.get(signal_id)
+        if current is None:
+            continue
+
+        context = current[1]
+        updated = CryptoSignalContext(
+            event_id=str(event.get("event_id") or ""),
+            signal_id=context.signal_id,
+            symbol=context.symbol,
+            price_now=context.price_now,
+            change_pct=context.change_pct,
+            trend=context.trend,
+            signal_strength=context.signal_strength,
+            n_markets=len(matched_markets),
+        )
+        if occurred_at >= current[0]:
+            contexts[signal_id] = (occurred_at, updated)
+
+    return {signal_id: context for signal_id, (_, context) in contexts.items()}
+
+
 def sorted_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     indexed = []
     for index, event in enumerate(events):
@@ -464,6 +549,17 @@ def format_exit_veto(context: VetoContext) -> str:
         f"🏁 *Exit trigger*: {escape_markdown(context.reason_code or 'unknown')}\n"
         f"Mercado: {escape_markdown(context.title)}\n"
         f"Razón: {escape_markdown(context.reason_text or '')}"
+    )
+
+
+def format_crypto_signal(context: CryptoSignalContext) -> str:
+    return (
+        "⚡ *SEÑAL CRIPTO*\n"
+        f"{escape_markdown(context.symbol)}: {context.change_pct:+.2f}% en 15min\n"
+        f"Precio: ${context.price_now:,.0f}\n"
+        f"Tendencia: {escape_markdown(context.trend)}\n"
+        f"Mercados Polymarket afectados: {context.n_markets}\n"
+        f"Strength: {context.signal_strength:.0%}"
     )
 
 
@@ -580,6 +676,7 @@ def main() -> int:
     signal_contexts = collect_signal_contexts(events, titles_by_market)
     decision_contexts = collect_decision_contexts(events, titles_by_market, signal_contexts)
     veto_contexts = collect_veto_contexts(events, titles_by_market)
+    crypto_signal_contexts = collect_crypto_signal_contexts(events)
     sent_state = load_sent_state(sent_state_path)
 
     sent_event_notifications = 0
@@ -606,6 +703,14 @@ def main() -> int:
                 context = signal_contexts.get(signal_id)
                 if context is not None:
                     message = format_signal_confirmed(context)
+
+        if message is None and event_type == "crypto.market.matched" and actor == "crypto-matcher-v1":
+            payload = event.get("payload") or {}
+            signal_id = payload.get("signal_id")
+            if isinstance(signal_id, str):
+                context = crypto_signal_contexts.get(signal_id)
+                if context is not None:
+                    message = format_crypto_signal(context)
 
         if message is None:
             continue

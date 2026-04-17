@@ -224,10 +224,12 @@ def build_signal_event(
     volatility = metrics["volatility"]
     trend = trend_from_change(change_pct)
     signal_strength = min(abs(change_pct) / 5.0, 1.0)
-    signal_id = (
-        f"crypto-{symbol}-"
-        f"{candle_close_time.strftime('%Y%m%dT%H%M%SZ') if candle_close_time else datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    timestamp = (
+        candle_close_time.strftime("%Y%m%dT%H%M%SZ")
+        if candle_close_time
+        else datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     )
+    signal_id = f"crypto-{symbol}-{trend}-{timestamp}"
 
     return {
         "event_id": str(uuid.uuid4()),

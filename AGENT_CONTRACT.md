@@ -43,6 +43,8 @@ No necesita ser Rust. Puede ser Python, bash, o cualquier proceso que llame a la
 | `probability-agent-v1` | `signal.confirmed` / `veto.raised` | `python3 agents/probability_agent.py` | ✅ ACTIVO |
 | `veto-agent-v1` | `veto.raised` | `cargo run -- veto signal` | ✅ ACTIVO |
 | `sizing-agent-v1` | `decision.formed` o `veto.raised` | `python3 agents/sizing_agent.py` | ✅ ACTIVO |
+| `crypto-price-agent-v1` | `crypto.signal.generated` | `python3 agents/crypto_price_agent.py` | ✅ ACTIVO |
+| `crypto-matcher-v1` | `crypto.market.matched` | `python3 agents/crypto_market_matcher.py` | ✅ ACTIVO |
 
 **Estos cinco agentes ya cubren el tramo mínimo de confirmación, probabilidad, veto, sizing y salida.**
 
@@ -105,6 +107,8 @@ Actualizar esta tabla cuando un agente pase a producción:
 | veto-agent-v1 | v1 | Python | agents/veto_agent.py | ✅ ACTIVO | 2026-04-15 |
 | sizing-agent-v1 | v1 | Python | agents/sizing_agent.py | ✅ ACTIVO | 2026-04-15 |
 | exit-agent-v1 | v1 | Python | agents/exit_agent.py | ✅ ACTIVO | 2026-04-15 |
+| crypto-price-agent-v1 | v1 | Python | agents/crypto_price_agent.py | ✅ ACTIVO | 2026-04-17 |
+| crypto-matcher-v1 | v1 | Python | agents/crypto_market_matcher.py | ✅ ACTIVO | 2026-04-17 |
 
 **Si esta tabla está vacía, el sistema no tiene agentes.**
 
