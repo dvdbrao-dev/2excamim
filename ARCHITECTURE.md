@@ -77,3 +77,27 @@ Limite actual:
 
 - el handoff no confirma señales ni forma decisiones
 - el runtime no consume todavia otras salidas del laboratorio Python
+
+## Crypto feed v1
+
+Flujo operativo añadido para señales cripto:
+
+```text
+Binance API (gratis)
+    ↓
+crypto_price_agent.py → crypto.signal.generated
+    ↓
+crypto_market_matcher.py → crypto.market.matched
+    ↓
+confirmation_agent.py → signal.confirmed
+    ↓
+sizing_agent.py → decision.formed (cap 3%)
+```
+
+Propiedades:
+
+- live price feed con klines de 1 minuto
+- sin autenticacion
+- sin coste de API
+- acoplamiento a Polymarket via snapshots JSONL
+- confirmacion y sizing reusan el store append-only existente

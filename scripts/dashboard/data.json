@@ -1,5 +1,5 @@
 {
-  "updated": "2026-04-17 12:42 UTC",
+  "updated": "2026-04-17 13:05 UTC",
   "bot": {
     "name": "EXCAMIM",
     "emoji": "\u26a1",
@@ -15,13 +15,13 @@
     "available_eur": 552.0
   },
   "costs": {
-    "today_usd": 0.044,
-    "today_eur": 0.0405,
-    "weekly_usd": 0.0711,
-    "weekly_eur": 0.0654,
+    "today_usd": 0.0449,
+    "today_eur": 0.0413,
+    "weekly_usd": 0.072,
+    "weekly_eur": 0.0662,
     "monthly_est_usd": 0.08,
     "per_signal": 5.4e-05,
-    "signals_processed": 808
+    "signals_processed": 824
   },
   "cost_chart": {
     "daily": [
@@ -79,7 +79,7 @@
       },
       {
         "date": "2026-04-17",
-        "cost": 0.043993
+        "cost": 0.044869
       }
     ],
     "weekly": [
@@ -113,7 +113,7 @@
       },
       {
         "week": "2026-W16",
-        "cost": 0.071095
+        "cost": 0.071971
       }
     ],
     "monthly": [
@@ -139,15 +139,15 @@
       },
       {
         "month": "2026-04",
-        "cost": 0.071095
+        "cost": 0.071971
       }
     ]
   },
   "pipeline": {
     "market.scored": 29,
-    "signal.generated": 2205,
-    "signal.confirmed": 2392,
-    "veto.raised": 216,
+    "signal.generated": 2233,
+    "signal.confirmed": 2421,
+    "veto.raised": 219,
     "decision.formed": 8
   },
   "decisions": [
@@ -299,6 +299,24 @@
   "closed_decisions": [],
   "vetoed_signals": [
     {
+      "title": "Will the Boston Celtics win the 2026 NBA Finals?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0966,
+      "occurred": "2026-04-17 13:00"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0918,
+      "occurred": "2026-04-17 13:00"
+    },
+    {
+      "title": "Will England win the 2026 FIFA World Cup?",
+      "reason_code": "probability_out_of_bounds",
+      "p_final": 0.0918,
+      "occurred": "2026-04-17 12:49"
+    },
+    {
       "title": "Will England win the 2026 FIFA World Cup?",
       "reason_code": "probability_out_of_bounds",
       "p_final": 0.0738,
@@ -399,24 +417,6 @@
       "reason_code": "probability_out_of_bounds",
       "p_final": 0.0918,
       "occurred": "2026-04-17 10:31"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.0738,
-      "occurred": "2026-04-17 10:21"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.08580000000000002,
-      "occurred": "2026-04-17 10:11"
-    },
-    {
-      "title": "Will England win the 2026 FIFA World Cup?",
-      "reason_code": "probability_out_of_bounds",
-      "p_final": 0.08580000000000002,
-      "occurred": "2026-04-17 10:02"
     }
   ],
   "agents": [
@@ -475,42 +475,16 @@
       "role": "Notifications"
     }
   ],
-  "timers": [
-    {
-      "name": "dns-watchdog",
-      "next": "Fri 2026-04-17",
-      "status": "active"
-    },
-    {
-      "name": "disk-guard",
-      "next": "Fri 2026-04-17",
-      "status": "active"
-    },
-    {
-      "name": "llm-health",
-      "next": "Fri 2026-04-17",
-      "status": "active"
-    },
-    {
-      "name": "excamim-daily",
-      "next": "Sat 2026-04-18",
-      "status": "active"
-    },
-    {
-      "name": "market-watch",
-      "next": "- -",
-      "status": "active"
-    }
-  ],
+  "timers": [],
   "git_log": [
+    "8defbf7 feat: crypto signals integrated in confirmation + sizing + telegram",
+    "6b44ad8 feat: crypto price agent - Binance signals to Polymarket",
     "369aeb1 fix: kelly cap 5%, global 60% bankroll limit, dashboard filter",
     "452ba41 fix: systemd creates raw dir before pipeline - definitive fix",
     "1ce57b8 fix: repair_store always creates raw dir and discovery file",
     "82a9fa1 fix: kelly sizing debug + dashboard bankroll display",
     "a0b6c36 feat: dashboard v3 - jarvis dark terminal redesign",
-    "b40e988 fix: bankroll dedup + line chart diario/semanal/mensual",
-    "672e5fa feat: dashboard v2 - bankroll, PnL, titles real, closed, dismissed",
-    "28618e1 feat: EXCAMIM dashboard - mission control UI port 8765"
+    "b40e988 fix: bankroll dedup + line chart diario/semanal/mensual"
   ],
   "pnl": {
     "status": "paper_trading - awaiting resolution",
@@ -519,8 +493,8 @@
     "deployed_usd": 400.0,
     "est_max_gain_usd": 0.0,
     "est_max_loss_usd": 400.0,
-    "daily_llm_cost": 0.044,
-    "weekly_llm_cost": 0.0711,
+    "daily_llm_cost": 0.0449,
+    "weekly_llm_cost": 0.072,
     "monthly_llm_cost": 0.08,
     "daily_series": [
       {
@@ -549,15 +523,16 @@
       },
       {
         "date": "2026-04-17",
-        "cost": 0.043993
+        "cost": 0.044869
       }
     ]
   },
+  "crypto": [],
   "system": {
     "disk_pct": 41,
-    "events_total": 4850,
+    "events_total": 4910,
     "decisions_total": 8,
-    "vetos_total": 216,
-    "signals_total": 2205
+    "vetos_total": 219,
+    "signals_total": 2233
   }
 }

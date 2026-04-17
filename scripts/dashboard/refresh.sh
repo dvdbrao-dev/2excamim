@@ -54,6 +54,68 @@ def load_market_titles(paths):
     return titles
 
 
+def crypto_symbol_label(symbol):
+    return {
+        "BTCUSDT": "BTC",
+        "ETHUSDT": "ETH",
+        "SOLUSDT": "SOL",
+    }.get(symbol, symbol.replace("USDT", ""))
+
+
+def load_crypto_feed(events):
+    latest_signals = {}
+    latest_matches = {}
+
+    for raw in events:
+        if not raw.strip():
+            continue
+        try:
+            event = json.loads(raw)
+        except Exception:
+            continue
+
+        event_type = event.get("event_type")
+        payload = event.get("payload") or {}
+        occurred_at = parse_iso(event.get("occurred_at"))
+
+        if event_type == "crypto.signal.generated":
+            signal_id = payload.get("signal_id")
+            symbol = payload.get("symbol")
+            if not isinstance(signal_id, str) or not isinstance(symbol, str):
+                continue
+            current = latest_signals.get(symbol)
+            if current is None or (occurred_at is not None and occurred_at >= current["occurred_at"]):
+                latest_signals[symbol] = {
+                    "symbol": symbol,
+                    "price_now": safe_float(payload.get("price_now")),
+                    "change_pct": safe_float(payload.get("change_pct")),
+                    "trend": payload.get("trend", "n/a"),
+                    "signal_strength": safe_float(payload.get("signal_strength")),
+                    "signal_at": occurred_at,
+                    "signal_timestamp": event.get("occurred_at", ""),
+                    "signal_id": signal_id,
+                    "matched_markets": 0,
+                }
+        elif event_type == "crypto.market.matched":
+            signal_id = payload.get("signal_id")
+            matched_markets = payload.get("matched_markets") or []
+            if not isinstance(signal_id, str):
+                continue
+            count = len(matched_markets) if isinstance(matched_markets, list) else 0
+            current = latest_matches.get(signal_id)
+            if current is None or (occurred_at is not None and occurred_at >= current["occurred_at"]):
+                latest_matches[signal_id] = {
+                    "occurred_at": occurred_at or datetime.min.replace(tzinfo=timezone.utc),
+                    "count": count,
+                }
+
+    for signal in latest_signals.values():
+        match = latest_matches.get(signal["signal_id"])
+        signal["matched_markets"] = match["count"] if match else 0
+
+    return latest_signals
+
+
 def format_day(value):
     return value.strftime("%Y-%m-%d")
 
@@ -69,6 +131,7 @@ def format_month(value):
 
 lines = events_path.read_text().splitlines() if events_path.exists() else []
 market_titles = load_market_titles(snapshots_paths)
+crypto_feed = load_crypto_feed(lines)
 
 eventos = collections.Counter()
 alerts = []
@@ -356,6 +419,19 @@ data = {
         "monthly_llm_cost": round(monthly_est, 2),
         "daily_series": daily_series,
     },
+    "crypto": [
+        {
+            "symbol": crypto_symbol_label(symbol),
+            "pair": symbol,
+            "price_now": round(float(feed.get("price_now", 0.0)), 2),
+            "change_pct": round(float(feed.get("change_pct", 0.0)), 2),
+            "trend": feed.get("trend", "n/a"),
+            "signal_at": feed.get("signal_timestamp", ""),
+            "matched_markets": int(feed.get("matched_markets", 0)),
+            "signal_strength": round(float(feed.get("signal_strength", 0.0)), 4),
+        }
+        for symbol, feed in sorted(crypto_feed.items())
+    ],
     "system": {
         "disk_pct": disk_pct,
         "events_total": sum(eventos.values()),

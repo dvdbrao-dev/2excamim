@@ -10,6 +10,18 @@ Pipeline completo corriendo 24/7 via systemd timer cada 5 minutos.
 market-watch → signal_agent → scoring_agent → confirmation_agent
 → probability_agent → veto_agent → sizing_agent → exit_agent
 
+## Fuentes de señales
+
+### Polymarket (activo)
+- Estrategia: VWAP reversion + MixMCP LLM
+- Mercados: 100 activos filtrados
+
+### Binance Price Feed (activo)
+- Estrategia: momentum 15min → mercados cripto Polymarket
+- Símbolos: BTC/USDT, ETH/USDT, SOL/USDT
+- Umbral: ±2% en 15 minutos
+- Coste: $0 (API pública)
+
 ## Agentes activos
 
 | Agente | Lenguaje | Función |
