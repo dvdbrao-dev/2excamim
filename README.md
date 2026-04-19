@@ -5,6 +5,8 @@ Event-sourcing en Rust + agentes Python. Operativo desde abril 2026.
 
 ## Estado actual
 Pipeline completo corriendo 24/7 via systemd timer cada 5 minutos.
+Estrategia activa: maker liquidity en NO-side (ver STRATEGY.md).
+LLM blend desactivado. Universo ampliado a mercados con NO >= 0.85.
 
 ## Arquitectura del pipeline
 market-watch → signal_agent → scoring_agent → confirmation_agent
@@ -13,7 +15,7 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 ## Fuentes de señales
 
 ### Polymarket (activo)
-- Estrategia base: `threshold_extremes` (sesgo NO-side) con umbrales configurables
+- Estrategia: maker liquidity, mercados con midpoint NO >= 0.85
 - Estrategia legacy opcional: `legacy_gap_to_half` (desactivada por defecto)
 - Mercados: 100 activos filtrados
 
@@ -35,6 +37,7 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 | veto_agent | Python | Veta signals confirmadas con probabilidad fuera de rango configurable `[floor, ceiling]` |
 | sizing_agent | Python | Kelly sizing sobre signals elegibles |
 | exit_agent | Python | Tres triggers de salida: target, volumen, decay |
+| STRATEGY.md | Doc | Hipótesis de edge activa y cambios aplicados |
 
 ## Stack
 - Runtime: Rust (event-sourcing, JSONL store)
