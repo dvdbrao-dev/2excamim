@@ -35,3 +35,16 @@ lado NO de estos mercados cobra el spread sin necesitar forecasting.
    API: https://gamma-api.polymarket.com/markets?closed=true&active=false
 2. Medir decisiones formadas con nueva configuración tras 24h de pipeline
 3. Activar fills paper reales cuando decisiones > 20/día
+
+## Migración V2
+
+### Ventana táctica post-22 abril
+- Orderbook wipe total: cero queue priority heredado
+- Gap de liquidez estimado: 24-72h mientras makers API-only migran manualmente
+- Fee taker en rango NO >= 0.85: mínima (p*(1-p) <= 0.1275)
+- Makers 0% fees en V2 confirma estrategia
+
+### Preparación completada
+- py-clob-client-v2 instalado
+- Spread monitor en scripts/clob_spread_monitor.py
+- Pendiente: registrar Builder Code en polymarket.com/settings?tab=builder
