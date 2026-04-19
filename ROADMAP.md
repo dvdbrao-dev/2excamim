@@ -4,6 +4,41 @@ Este roadmap describe el estado real del sistema actual. No es una lista histór
 
 2EXCAMIM sigue siendo un sistema offline y append-only orientado a investigación, confirmación, gobierno y paper execution controlada. El sistema todavía no debe considerarse una plataforma de trading live.
 
+## 0. Pivot Estratégico — Abril 2026
+
+Estado: aplicado.
+
+### Qué cambió y por qué
+El sistema operaba con hipótesis de forecasting (predecir mejor que el mercado).
+Auditoría reveló problema crítico: 219 de 219 vetos causados por blend LLM
+arrastrando p_final por debajo de 0.10. El LLM no aportaba criterio,
+apagaba señales.
+
+Nueva hipótesis: maker liquidity en NO-side de mercados con flujo retail
+sesgado. No se predice el outcome, se cobra el spread acomodando flujo
+desequilibrado. Ver STRATEGY.md.
+
+### Cambios técnicos aplicados
+- ALPHA = 0.0 (probability_agent.py)
+- MAX_RESOLUTION_HOURS = 720
+- Filtro price_too_extreme eliminado
+- Filtro not_in_maker_target_range añadido (NO >= 0.85)
+- var/ excluido de git tracking
+
+### Próximas prioridades
+1. Medir decisiones formadas con nueva config (24h)
+2. Validar hipótesis con histórico de Polymarket
+3. Cambiar sizing_agent a limit orders cuando decisiones > 20/día
+4. Fills reales con tamaño mínimo cuando paper loop sea estable
+
+### No se toca hasta validar edge bruto
+- Arquitectura Rust/event-sourcing
+- Live gateway
+- Kelly sizing
+- Confirmation agent thresholds
+
+---
+
 ## 1. Research y Generación de Señales
 
 Estado: implementado en versión funcional mínima.
