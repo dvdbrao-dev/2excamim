@@ -1,16 +1,56 @@
-import requests, json, time
-from datetime import datetime
+import json
+import requests
 
-TEST_MARKETS = [
-    "102936224134271070189104847090829839924697394514566827387181305960175107677216",
-    "81662326158871781857247725348568394697379926716334270967994039975048021832777"
-]
+GAMMA_BASE = "https://gamma-api.polymarket.com"
+CLOB_BASE = "https://clob.polymarket.com"
 
-BASE = "https://clob-v2.polymarket.com"
+
+def parse_json_or_list(value):
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            return []
+    return []
+
+
+def parse_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def get_active_markets():
+    response = requests.get(
+        f"{GAMMA_BASE}/markets",
+        params={"active": "true", "limit": 200},
+        timeout=10,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("data", "markets", "results"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return value
+    return []
+
 
 def get_spread(token_id):
-    r = requests.get(f"{BASE}/book", params={"token_id": token_id}, timeout=5)
-    book = r.json()
+    response = requests.get(
+        f"{CLOB_BASE}/book",
+        params={"token_id": token_id},
+        timeout=10,
+    )
+    response.raise_for_status()
+    book = response.json()
     bids = book.get("bids", [])
     asks = book.get("asks", [])
     if not bids or not asks:
@@ -18,18 +58,50 @@ def get_spread(token_id):
     best_bid = float(bids[0]["price"])
     best_ask = float(asks[0]["price"])
     return {
-        "token_id": token_id[:8],
+        "spread": round(best_ask - best_bid, 4),
         "best_bid": best_bid,
         "best_ask": best_ask,
-        "spread": round(best_ask - best_bid, 4),
-        "midpoint": round((best_bid + best_ask) / 2, 4),
-        "ts": datetime.utcnow().isoformat()
     }
 
-for token_id in TEST_MARKETS:
+
+rows = []
+for market in get_active_markets():
     try:
-        s = get_spread(token_id)
-        if s:
-            print(json.dumps(s))
-    except Exception as e:
-        print(f"Error {token_id[:8]}: {e}")
+        outcome_prices = parse_json_or_list(market.get("outcomePrices"))
+        if len(outcome_prices) < 2:
+            continue
+        midpoint_no = parse_float(outcome_prices[1], default=-1.0)
+        if midpoint_no < 0.85:
+            continue
+
+        volume = parse_float(market.get("volumeNum"), default=0.0)
+        if volume <= 10000:
+            continue
+        volume_24h = parse_float(market.get("volume24hr"), default=0.0)
+
+        clob_token_ids = parse_json_or_list(market.get("clobTokenIds"))
+        if not clob_token_ids:
+            continue
+        token_id = str(clob_token_ids[0])
+
+        spread = get_spread(token_id)
+        if spread is None:
+            continue
+
+        rows.append(
+            {
+                "question": str(market.get("question", ""))[:60],
+                "midpoint_no": round(midpoint_no, 4),
+                "volume": round(volume, 2),
+                "volume_24h": round(volume_24h, 2),
+                "spread": spread["spread"],
+                "best_bid": spread["best_bid"],
+                "best_ask": spread["best_ask"],
+            }
+        )
+    except Exception:
+        continue
+
+rows.sort(key=lambda row: row["volume_24h"], reverse=True)
+for row in rows[:10]:
+    print(json.dumps(row))
