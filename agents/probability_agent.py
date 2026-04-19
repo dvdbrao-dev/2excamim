@@ -23,6 +23,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from core.event_store import (
+    append_event_idempotent,
+    default_checkpoint_path,
+    load_checkpoint,
+    load_jsonl,
+    parse_timestamp,
+    read_jsonl_since,
+    save_checkpoint,
+)
+from core.logging import emit_json
+from core.time import execution_run_id, utc_now_rfc3339
+
 
 env_path = Path(__file__).resolve().parents[1] / ".env"
 if env_path.exists():
@@ -40,9 +52,13 @@ OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions"
 DEFAULT_STORE = Path("./var/events.jsonl")
 DEFAULT_WATCH_DIR = Path("./var/market-watch")
 DEFAULT_MAX_SIGNALS = 50
-ALPHA = 0.6
+DEFAULT_MODE = "limited_usable"
+ALPHA = 0.0
 MIN_FINAL_PROBABILITY = 0.10
 MAX_FINAL_PROBABILITY = 0.90
+DEFAULT_MIN_VOLUME_USDC = 50_000.0
+DEFAULT_MAX_SPREAD = 0.08
+DEFAULT_MAX_SNAPSHOT_AGE_SECONDS = 1800
 INPUT_COST_PER_1M_TOKENS = 0.15
 OUTPUT_COST_PER_1M_TOKENS = 0.60
 API_TIMEOUT_SECONDS = 60
@@ -72,6 +88,10 @@ class SnapshotCandidate:
     title: str
     observed_at: datetime
     midpoint: float
+    best_bid: float | None
+    best_ask: float | None
+    spread: float | None
+    volume_usdc: float | None
 
 
 def parse_args() -> argparse.Namespace:
@@ -88,46 +108,41 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_MAX_SIGNALS,
         help="Maximum number of signals to evaluate in a single run.",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["advisory", "limited_usable"],
+        default=DEFAULT_MODE,
+        help="advisory never emits Kelly-usable probabilities; limited_usable requires context checks.",
+    )
+    parser.add_argument(
+        "--min-volume-usdc",
+        type=float,
+        default=DEFAULT_MIN_VOLUME_USDC,
+        help="Minimum snapshot volume for usable probability output.",
+    )
+    parser.add_argument(
+        "--max-spread",
+        type=float,
+        default=DEFAULT_MAX_SPREAD,
+        help="Maximum (best_ask-best_bid) spread allowed for usable probability output.",
+    )
+    parser.add_argument(
+        "--max-snapshot-age-seconds",
+        type=int,
+        default=DEFAULT_MAX_SNAPSHOT_AGE_SECONDS,
+        help="Maximum snapshot staleness for usable probability output.",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        default="",
+        help="Optional checkpoint path (default: <store-dir>/.checkpoints/<agent>.json).",
+    )
+    parser.add_argument(
+        "--full-replay",
+        action="store_true",
+        help="Ignore checkpoint and replay full store.",
+    )
     return parser.parse_args()
-
-
-def utc_now_rfc3339() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def execution_run_id() -> str:
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    return f"{AGENT_ID}-{timestamp}"
-
-
-def load_jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
-
-    records: list[dict[str, Any]] = []
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        try:
-            records.append(json.loads(stripped))
-        except json.JSONDecodeError as error:
-            raise SystemExit(f"invalid JSONL in {path} at line {line_number}: {error}") from error
-    return records
-
-
-def parse_timestamp(value: Any) -> datetime | None:
-    if isinstance(value, str):
-        trimmed = value.strip()
-        if not trimmed:
-            return None
-        try:
-            return datetime.fromisoformat(trimmed.replace("Z", "+00:00")).astimezone(timezone.utc)
-        except ValueError:
-            return None
-    if isinstance(value, (int, float)) and math.isfinite(float(value)):
-        return datetime.fromtimestamp(float(value), tz=timezone.utc)
-    return None
 
 
 def normalized_market_id(value: Any) -> str | None:
@@ -167,6 +182,12 @@ def latest_snapshots(watch_dir: Path) -> dict[str, SnapshotCandidate]:
         observed_at = parse_timestamp(snapshot.get("observed_at"))
         midpoint = market_midpoint(snapshot)
         title = snapshot.get("title")
+        best_bid = snapshot.get("best_bid")
+        best_ask = snapshot.get("best_ask")
+        spread = None
+        if isinstance(best_bid, (int, float)) and isinstance(best_ask, (int, float)):
+            spread = float(best_ask) - float(best_bid)
+        volume_usdc = snapshot.get("volume")
         if (
             not isinstance(market_id, str)
             or not market_id.strip()
@@ -182,6 +203,10 @@ def latest_snapshots(watch_dir: Path) -> dict[str, SnapshotCandidate]:
             title=title.strip(),
             observed_at=observed_at,
             midpoint=midpoint,
+            best_bid=float(best_bid) if isinstance(best_bid, (int, float)) else None,
+            best_ask=float(best_ask) if isinstance(best_ask, (int, float)) else None,
+            spread=spread,
+            volume_usdc=float(volume_usdc) if isinstance(volume_usdc, (int, float)) else None,
         )
         current = latest.get(market_id)
         if current is None or candidate.observed_at > current.observed_at:
@@ -295,6 +320,99 @@ def collect_candidates(
                 if raised_by == AGENT_ID:
                     self_processed_signal_ids.add(target_id)
 
+    return contexts, confirmed_signal_ids, self_processed_signal_ids, vetoed_signal_ids
+
+
+def apply_events_to_candidate_state(
+    contexts: dict[str, SignalCandidate],
+    confirmed_signal_ids: set[str],
+    self_processed_signal_ids: set[str],
+    vetoed_signal_ids: set[str],
+    events: list[dict[str, Any]],
+) -> None:
+    delta_contexts, delta_confirmed, delta_self_processed, delta_vetoed = collect_candidates(events)
+    contexts.update(delta_contexts)
+    confirmed_signal_ids.update(delta_confirmed)
+    self_processed_signal_ids.update(delta_self_processed)
+    vetoed_signal_ids.update(delta_vetoed)
+
+
+def _serialize_timestamp(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat().replace("+00:00", "Z")
+
+
+def serialize_candidate_state(
+    contexts: dict[str, SignalCandidate],
+    confirmed_signal_ids: set[str],
+    self_processed_signal_ids: set[str],
+    vetoed_signal_ids: set[str],
+) -> dict[str, Any]:
+    return {
+        "contexts": {
+            signal_id: {
+                "signal_id": candidate.signal_id,
+                "market_id": candidate.market_id,
+                "aggregate_key": candidate.aggregate_key,
+                "title": candidate.title,
+                "midpoint": candidate.midpoint,
+                "generated_event_id": candidate.generated_event_id,
+                "confirmation_event_id": candidate.confirmation_event_id,
+                "parent_event_id": candidate.parent_event_id,
+                "generated_at": _serialize_timestamp(candidate.generated_at),
+                "confirmation_at": _serialize_timestamp(candidate.confirmation_at),
+                "confirmation_score": candidate.confirmation_score,
+                "confirmed_by": candidate.confirmed_by,
+                "hypothesis_id": candidate.hypothesis_id,
+                "correlation_id": candidate.correlation_id,
+            }
+            for signal_id, candidate in contexts.items()
+        },
+        "confirmed_signal_ids": sorted(confirmed_signal_ids),
+        "self_processed_signal_ids": sorted(self_processed_signal_ids),
+        "vetoed_signal_ids": sorted(vetoed_signal_ids),
+    }
+
+
+def restore_candidate_state(
+    payload: dict[str, Any],
+) -> tuple[dict[str, SignalCandidate], set[str], set[str], set[str]]:
+    contexts_payload = payload.get("contexts")
+    contexts: dict[str, SignalCandidate] = {}
+    if isinstance(contexts_payload, dict):
+        for signal_id, raw in contexts_payload.items():
+            if not isinstance(raw, dict):
+                continue
+            try:
+                contexts[signal_id] = SignalCandidate(
+                    signal_id=raw["signal_id"],
+                    market_id=raw["market_id"],
+                    aggregate_key=raw.get("aggregate_key"),
+                    title=raw.get("title") or "",
+                    midpoint=float(raw.get("midpoint", 0.0)),
+                    generated_event_id=raw.get("generated_event_id"),
+                    confirmation_event_id=raw.get("confirmation_event_id"),
+                    parent_event_id=raw.get("parent_event_id"),
+                    generated_at=parse_timestamp(raw.get("generated_at")),
+                    confirmation_at=parse_timestamp(raw.get("confirmation_at")),
+                    confirmation_score=float(raw["confirmation_score"])
+                    if isinstance(raw.get("confirmation_score"), (int, float))
+                    else None,
+                    confirmed_by=raw.get("confirmed_by"),
+                    hypothesis_id=raw.get("hypothesis_id"),
+                    correlation_id=raw.get("correlation_id"),
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+
+    confirmed_signal_ids = {
+        item for item in payload.get("confirmed_signal_ids", []) if isinstance(item, str)
+    }
+    self_processed_signal_ids = {
+        item for item in payload.get("self_processed_signal_ids", []) if isinstance(item, str)
+    }
+    vetoed_signal_ids = {item for item in payload.get("vetoed_signal_ids", []) if isinstance(item, str)}
     return contexts, confirmed_signal_ids, self_processed_signal_ids, vetoed_signal_ids
 
 
@@ -476,6 +594,41 @@ def key_fingerprint(value: str) -> str:
     return digest[:12]
 
 
+def evaluate_context_quality(
+    snapshot: SnapshotCandidate,
+    args: argparse.Namespace,
+    now: datetime,
+) -> tuple[bool, list[str], list[str]]:
+    positive: list[str] = []
+    negative: list[str] = []
+
+    snapshot_age_seconds = (now - snapshot.observed_at).total_seconds()
+    if snapshot_age_seconds <= float(args.max_snapshot_age_seconds):
+        positive.append(
+            f"snapshot_age_seconds={snapshot_age_seconds:.0f} <= max_snapshot_age_seconds={args.max_snapshot_age_seconds}"
+        )
+    else:
+        negative.append(
+            f"snapshot_age_seconds={snapshot_age_seconds:.0f} > max_snapshot_age_seconds={args.max_snapshot_age_seconds}"
+        )
+
+    if isinstance(snapshot.volume_usdc, float) and snapshot.volume_usdc >= args.min_volume_usdc:
+        positive.append(
+            f"volume_usdc={snapshot.volume_usdc:.2f} >= min_volume_usdc={args.min_volume_usdc:.2f}"
+        )
+    else:
+        negative.append(
+            f"volume_usdc={snapshot.volume_usdc} below min_volume_usdc={args.min_volume_usdc:.2f}"
+        )
+
+    if isinstance(snapshot.spread, float) and 0.0 <= snapshot.spread <= args.max_spread:
+        positive.append(f"spread={snapshot.spread:.6f} <= max_spread={args.max_spread:.6f}")
+    else:
+        negative.append(f"spread={snapshot.spread} outside allowed max_spread={args.max_spread:.6f}")
+
+    return len(negative) == 0, positive, negative
+
+
 def deterministic_veto_id(signal_id: str) -> str:
     return f"probability-veto-{signal_id}"
 
@@ -537,6 +690,7 @@ def build_confirmed_event(
         "alpha": ALPHA,
         "market_midpoint": midpoint,
         "p_market": midpoint,
+        "heuristic_score": candidate.confirmation_score,
         "estimated_probability": estimated_probability,
         "p_final": p_final,
         "confidence": confidence,
@@ -573,6 +727,7 @@ def build_confirmed_event(
                 f"mixmcp alpha={ALPHA:.1f} direction={direction} confidence={confidence}"
             ),
             "confirmation_score": p_final,
+            "heuristic_score": candidate.confirmation_score,
             "estimated_probability": estimated_probability,
             "market_midpoint": midpoint,
             "p_final": p_final,
@@ -667,16 +822,16 @@ def build_veto_event(
     }
 
 
-def append_event(store_path: Path, event: dict[str, Any]) -> None:
-    store_path.parent.mkdir(parents=True, exist_ok=True)
-    with store_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(event, separators=(",", ":")) + "\n")
-
-
 def main() -> int:
     args = parse_args()
     if args.max_signals < 0:
         raise SystemExit("--max-signals must be >= 0")
+    if args.max_snapshot_age_seconds < 0:
+        raise SystemExit("--max-snapshot-age-seconds must be >= 0")
+    if args.min_volume_usdc < 0:
+        raise SystemExit("--min-volume-usdc must be >= 0")
+    if not 0.0 <= args.max_spread <= 1.0:
+        raise SystemExit("--max-spread must be within [0,1]")
 
     api_key = os.environ.get("OPENAI_API_KEY", "")
     if not api_key or api_key == "tu api aqui perro":
@@ -686,18 +841,36 @@ def main() -> int:
 
     store_path = Path(args.store)
     watch_dir = Path(args.watch_dir)
-    run_id = execution_run_id()
-
-    events = load_jsonl(store_path)
-    latest = latest_snapshots(watch_dir)
-    contexts, confirmed_signal_ids, self_processed_signal_ids, vetoed_signal_ids = collect_candidates(
-        events
+    run_id = execution_run_id(AGENT_ID)
+    checkpoint_path = (
+        Path(args.checkpoint)
+        if isinstance(args.checkpoint, str) and args.checkpoint.strip()
+        else default_checkpoint_path(store_path, AGENT_ID)
     )
-    already_confirmed, already_vetoed = existing_event_ids(events)
+
+    checkpoint = {} if args.full_replay else load_checkpoint(checkpoint_path)
+    offset = int(checkpoint.get("offset", 0)) if not args.full_replay else 0
+    events, next_offset = read_jsonl_since(store_path, offset)
+    latest = latest_snapshots(watch_dir)
+    if offset == 0 or "state" not in checkpoint:
+        contexts, confirmed_signal_ids, self_processed_signal_ids, vetoed_signal_ids = collect_candidates(
+            events
+        )
+    else:
+        contexts, confirmed_signal_ids, self_processed_signal_ids, vetoed_signal_ids = restore_candidate_state(
+            checkpoint.get("state") if isinstance(checkpoint.get("state"), dict) else {}
+        )
+        apply_events_to_candidate_state(
+            contexts,
+            confirmed_signal_ids,
+            self_processed_signal_ids,
+            vetoed_signal_ids,
+            events,
+        )
     skipped_missing_snapshot = 0
 
     eligible_candidates: list[SignalCandidate] = []
-    processed_signal_ids = self_processed_signal_ids | already_confirmed | already_vetoed
+    processed_signal_ids = set(self_processed_signal_ids)
     for signal_id in sorted(confirmed_signal_ids):
         if signal_id in processed_signal_ids:
             continue
@@ -728,6 +901,8 @@ def main() -> int:
     skipped_existing = 0
     skipped_api_failure = 0
     skipped_unscorable = 0
+    advisory_only = 0
+    usable_candidates = 0
     input_tokens_total = 0
     output_tokens_total = 0
     estimated_cost_total = 0.0
@@ -740,16 +915,56 @@ def main() -> int:
             skipped_existing += 1
             continue
 
+        snapshot = latest.get(candidate.market_id)
+        if snapshot is None:
+            skipped_missing_snapshot += 1
+            continue
+
+        context_usable, context_positive, context_negative = evaluate_context_quality(
+            snapshot,
+            args,
+            datetime.now(timezone.utc),
+        )
+        advisory_mode = args.mode == "advisory" or not context_usable
+        mode_effective = "advisory" if advisory_mode else "usable"
+
         api_result = call_openai_api(candidate.title, candidate.midpoint)
         if isinstance(api_result, tuple) and len(api_result) == 2 and api_result[0] is None:
             last_api_error = api_result[1]
             skipped_api_failure += 1
+            emit_json(
+                {
+                    "actor": AGENT_ID,
+                    "signal_id": candidate.signal_id,
+                    "market_id": candidate.market_id,
+                    "model": MODEL_NAME,
+                    "context_source": "market_watch_snapshot",
+                    "mode_configured": args.mode,
+                    "mode_effective": "api_failure",
+                    "context_positive_checks": context_positive,
+                    "context_negative_checks": context_negative,
+                    "api_error": last_api_error,
+                }
+            )
             continue
 
         parsed, input_tokens, output_tokens = api_result
         estimated_probability = normalize_probability(parsed.get("estimated_probability"))
         if estimated_probability is None:
             skipped_unscorable += 1
+            emit_json(
+                {
+                    "actor": AGENT_ID,
+                    "signal_id": candidate.signal_id,
+                    "market_id": candidate.market_id,
+                    "model": MODEL_NAME,
+                    "context_source": "market_watch_snapshot",
+                    "mode_configured": args.mode,
+                    "mode_effective": "invalid_model_output",
+                    "context_positive_checks": context_positive,
+                    "context_negative_checks": context_negative,
+                }
+            )
             continue
 
         p_final = (ALPHA * estimated_probability) + ((1.0 - ALPHA) * candidate.midpoint)
@@ -761,48 +976,103 @@ def main() -> int:
         output_tokens_total += output_tokens
         estimated_cost_total += estimated_cost_usd(input_tokens, output_tokens)
 
+        emit_json(
+            {
+                "actor": AGENT_ID,
+                "signal_id": candidate.signal_id,
+                "market_id": candidate.market_id,
+                "model": MODEL_NAME,
+                "context_source": "market_watch_snapshot",
+                "mode_configured": args.mode,
+                "mode_effective": mode_effective,
+                "context_positive_checks": context_positive,
+                "context_negative_checks": context_negative,
+                "estimated_probability": estimated_probability,
+                "market_midpoint": candidate.midpoint,
+                "p_final": p_final,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            }
+        )
+
+        if advisory_mode:
+            advisory_only += 1
+            self_processed_signal_ids.add(candidate.signal_id)
+            continue
+
+        usable_candidates += 1
+
         if p_final < MIN_FINAL_PROBABILITY or p_final > MAX_FINAL_PROBABILITY:
-            append_event(
+            persisted = append_event_idempotent(
                 store_path,
                 build_veto_event(candidate, run_id, watch_dir, parsed, input_tokens, output_tokens, p_final),
             )
-            vetoed_written += 1
+            if persisted:
+                vetoed_written += 1
+            vetoed_signal_ids.add(candidate.signal_id)
+            self_processed_signal_ids.add(candidate.signal_id)
             continue
 
-        append_event(
+        persisted = append_event_idempotent(
             store_path,
             build_confirmed_event(candidate, run_id, watch_dir, parsed, input_tokens, output_tokens),
         )
-        confirmed_written += 1
+        if persisted:
+            confirmed_written += 1
+        self_processed_signal_ids.add(candidate.signal_id)
 
-    print(
-        json.dumps(
-            {
-                "actor": AGENT_ID,
-                "producer_run_id": run_id,
-                "store": str(store_path),
-                "watch_dir": str(watch_dir),
-                "model": MODEL_NAME,
-                "alpha": ALPHA,
-                "openai_key_loaded": True,
-                "openai_key_fingerprint": openai_key_fingerprint,
-                "max_signals": args.max_signals,
-                "eligible_candidates": len(eligible_candidates),
-                "confirmed_written": confirmed_written,
-                "vetoed_written": vetoed_written,
-                "skipped_existing": skipped_existing,
-                "skipped_missing_snapshot": skipped_missing_snapshot,
-                "skipped_api_failure": skipped_api_failure,
-                "skipped_unscorable": skipped_unscorable,
-                "last_api_error": last_api_error,
-                "last_title_sample": last_title_sample,
-                "input_tokens": input_tokens_total,
-                "output_tokens": output_tokens_total,
-                "estimated_cost_usd": round(estimated_cost_total, 8),
-            },
-            separators=(",", ":"),
-            sort_keys=True,
-        )
+    safe_next_offset = next_offset
+    if store_path.exists():
+        safe_next_offset = store_path.stat().st_size
+
+    save_checkpoint(
+        checkpoint_path,
+        {
+            "offset": safe_next_offset,
+            "state": serialize_candidate_state(
+                contexts,
+                confirmed_signal_ids,
+                self_processed_signal_ids,
+                vetoed_signal_ids,
+            ),
+        },
+    )
+
+    emit_json(
+        {
+            "actor": AGENT_ID,
+            "producer_run_id": run_id,
+            "store": str(store_path),
+            "watch_dir": str(watch_dir),
+            "model": MODEL_NAME,
+            "alpha": ALPHA,
+            "mode": args.mode,
+            "min_volume_usdc": args.min_volume_usdc,
+            "max_spread": args.max_spread,
+            "max_snapshot_age_seconds": args.max_snapshot_age_seconds,
+            "openai_key_loaded": True,
+            "openai_key_fingerprint": openai_key_fingerprint,
+            "max_signals": args.max_signals,
+            "eligible_candidates": len(eligible_candidates),
+            "usable_candidates": usable_candidates,
+            "advisory_only": advisory_only,
+            "confirmed_written": confirmed_written,
+            "vetoed_written": vetoed_written,
+            "skipped_existing": skipped_existing,
+            "skipped_missing_snapshot": skipped_missing_snapshot,
+            "skipped_api_failure": skipped_api_failure,
+            "skipped_unscorable": skipped_unscorable,
+            "last_api_error": last_api_error,
+            "last_title_sample": last_title_sample,
+            "input_tokens": input_tokens_total,
+            "output_tokens": output_tokens_total,
+            "estimated_cost_usd": round(estimated_cost_total, 8),
+            "events_read": len(events),
+            "events_processed": len(events),
+            "checkpoint_offset": offset,
+            "next_checkpoint_offset": safe_next_offset,
+            "full_replay": bool(args.full_replay),
+        }
     )
     return 0
 

@@ -72,6 +72,12 @@ pub(crate) enum Command {
     IngestResearchSignals {
         input_path: PathBuf,
     },
+    ConfirmSignal {
+        signal_id: String,
+        confirmed_by: String,
+        confirmation_reasons: Option<Vec<String>>,
+        rejection_reasons: Option<Vec<String>>,
+    },
     ConfirmSignals,
     MeasureConfirmationOutcomes,
     EvaluateConfirmationPolicy,

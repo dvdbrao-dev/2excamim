@@ -190,7 +190,12 @@ fn temp_store_path(path: &Path) -> Result<PathBuf, StorageError> {
         StorageError::invalid_data("snapshot store path must include a file name")
     })?;
     let mut temp_name = file_name.to_os_string();
-    temp_name.push(".tmp");
+    let pid = std::process::id();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| StorageError::invalid_data(error.to_string()))?
+        .as_nanos();
+    temp_name.push(format!(".{pid}.{nanos}.tmp"));
     Ok(path.with_file_name(temp_name))
 }
 
@@ -204,17 +209,15 @@ fn validate_snapshot_jsonl(path: &Path) -> Result<(), StorageError> {
             continue;
         }
 
-        let snapshot: MarketSnapshot = match serde_json::from_str(&line) {
-            Ok(snapshot) => snapshot,
-            Err(error) => {
-                eprintln!("skipping invalid temp JSONL line {}: {error}", index + 1);
-                continue;
-            }
-        };
-        if let Err(error) = snapshot.validate() {
-            eprintln!("skipping invalid snapshot at line {}: {error}", index + 1);
-            continue;
-        }
+        let snapshot: MarketSnapshot = serde_json::from_str(&line).map_err(|error| {
+            StorageError::invalid_data(format!(
+                "invalid snapshot JSONL line {}: {error}",
+                index + 1
+            ))
+        })?;
+        snapshot.validate().map_err(|error| {
+            StorageError::invalid_data(format!("invalid snapshot at line {}: {error}", index + 1))
+        })?;
     }
 
     Ok(())

@@ -1083,7 +1083,9 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("twoexcamim-dashboard-{name}-{nanos}.{suffix}"))
+        let base = std::env::temp_dir().join(format!("twoexcamim-dashboard-{nanos}"));
+        std::fs::create_dir_all(&base).unwrap();
+        base.join(format!("{name}.{suffix}"))
     }
 
     fn config(store_path: std::path::PathBuf) -> DashboardConfig {

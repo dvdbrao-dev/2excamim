@@ -13,7 +13,9 @@ use crate::{
         ConfirmationScorecard, ConfirmationWalkForwardConfig,
     },
     batch_runner::{run_batch, BatchRunOptions},
+    commands::ConfirmSignalCommand,
     dashboard::{serve_dashboard_http, write_dashboard, DashboardConfig},
+    events::{Provenance, SourceKind},
     execution::{
         project_paper_ledger, run_paper_decisions, submit_paper_order_and_map_fill,
         CliPolymarketPaperBackend, FixturePolymarketPaperBackend, PaperDecisionRunConfig,
@@ -30,6 +32,7 @@ use crate::{
     queries::QueryService,
     store::{JsonlEventStore, StoredEvent},
 };
+use serde_json::json;
 
 use super::{
     cli_parser::usage, json_renderer, text_renderer, Command, Config, OutputFormat,
@@ -85,6 +88,19 @@ pub(crate) fn execute(config: Config) -> Result<String, RuntimeError> {
         Command::IngestResearchSignals { ref input_path } => {
             render_research_signal_ingest(&store, &config, input_path)
         }
+        Command::ConfirmSignal {
+            ref signal_id,
+            ref confirmed_by,
+            ref confirmation_reasons,
+            ref rejection_reasons,
+        } => render_confirm_signal(
+            &store,
+            &config,
+            signal_id,
+            confirmed_by,
+            confirmation_reasons.as_deref(),
+            rejection_reasons.as_deref(),
+        ),
         Command::ConfirmSignals => render_confirm_signals(&store, &config),
         Command::MeasureConfirmationOutcomes => {
             render_measure_confirmation_outcomes(&store, &config)
@@ -113,6 +129,92 @@ pub(crate) fn execute(config: Config) -> Result<String, RuntimeError> {
         Command::RunBatch {
             ref research_signals_path,
         } => render_batch_run(&store, &config, research_signals_path),
+    }
+}
+
+fn render_confirm_signal(
+    store: &JsonlEventStore,
+    config: &Config,
+    signal_id: &str,
+    confirmed_by: &str,
+    confirmation_reasons: Option<&[String]>,
+    rejection_reasons: Option<&[String]>,
+) -> Result<String, RuntimeError> {
+    let generated = store
+        .read_all()?
+        .into_iter()
+        .rev()
+        .find(|event| {
+            event.event_type.as_str() == "signal.generated"
+                && event
+                    .payload
+                    .get("signal_id")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(signal_id)
+        })
+        .ok_or_else(|| RuntimeError::NotFound {
+            entity: "signal",
+            id: signal_id.to_string(),
+        })?;
+
+    let command = ConfirmSignalCommand {
+        produced_by: "runtime.agent.confirmation".into(),
+        provenance: Provenance {
+            source_kind: SourceKind::Runtime,
+            source_ref: None,
+            producer_run_id: None,
+            actor: Some(confirmed_by.to_string()),
+            trace_id: Some(format!("runtime.confirm.signal:{signal_id}")),
+            notes: Some("confirmed via runtime CLI".into()),
+        },
+        aggregate_key: generated.aggregate_key.clone(),
+        signal_id: signal_id.to_string(),
+        hypothesis_id: generated.linkage.hypothesis_id.clone(),
+        confirmed_by: confirmed_by.to_string(),
+        confirmation_reason: Some("confirmed via runtime CLI".into()),
+        confirmation_score: generated
+            .payload
+            .get("strength")
+            .and_then(serde_json::Value::as_f64),
+        parent_event_id: Some(generated.event_id.clone()),
+        correlation_id: generated.linkage.correlation_id.clone(),
+    };
+
+    let envelope = command
+        .execute()
+        .map_err(|error| RuntimeError::Usage(error.to_string()))?;
+    let mut stored =
+        StoredEvent::try_from(&envelope).map_err(|error| RuntimeError::Usage(error.to_string()))?;
+    if confirmation_reasons.is_some() || rejection_reasons.is_some() {
+        if let Some(payload) = stored.payload.as_object_mut() {
+            if let Some(reasons) = confirmation_reasons {
+                payload.insert("confirmation_reasons".into(), json!(reasons));
+            }
+            if let Some(reasons) = rejection_reasons {
+                payload.insert("rejection_reasons".into(), json!(reasons));
+            }
+        }
+    }
+    let persisted = if config.dry_run {
+        false
+    } else {
+        store.append_event(&stored)?
+    };
+
+    match config.format {
+        OutputFormat::Text => Ok(format!(
+            "Confirm Signal\nsignal_id: {signal_id}\nconfirmed_by: {confirmed_by}\npersisted: {persisted}\nidempotency_key: {}",
+            stored.idempotency_key
+        )),
+        OutputFormat::Json => Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "kind": "confirm_signal",
+            "signal_id": signal_id,
+            "confirmed_by": confirmed_by,
+            "confirmation_reasons": confirmation_reasons,
+            "rejection_reasons": rejection_reasons,
+            "persisted": persisted,
+            "idempotency_key": stored.idempotency_key
+        }))?),
     }
 }
 

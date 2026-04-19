@@ -24,11 +24,10 @@ DEFAULT_STORE = Path("./var/events.jsonl")
 DEFAULT_WATCH_DIR = Path("./var/market-watch")
 
 PRICE_GAP_LIMIT = 0.07
-EXTREME_PRICE_FLOOR = 0.10
-EXTREME_PRICE_CEILING = 0.90
+MAKER_TARGET_NO_FLOOR = 0.85
 MIN_VOLUME_USDC = 50_000.0
 MIN_RESOLUTION_HOURS = 4.0
-MAX_RESOLUTION_HOURS = 168.0
+MAX_RESOLUTION_HOURS = 720.0
 
 
 @dataclass
@@ -211,11 +210,6 @@ def score_market(
         return None, "missing market_id"
 
     midpoint = market_midpoint(snapshot)
-    if midpoint is not None and (
-        midpoint < EXTREME_PRICE_FLOOR or midpoint > EXTREME_PRICE_CEILING
-    ):
-        return None, "price_too_extreme"
-
     price = market_price(snapshot)
     if price is None:
         return None, "missing market price"
@@ -233,6 +227,9 @@ def score_market(
     if resolution_at is not None:
         hours_to_resolution = (resolution_at - observed_at).total_seconds() / 3600.0
     price_gap_to_half = abs(price - 0.5)
+
+    if midpoint is not None and midpoint > (1 - MAKER_TARGET_NO_FLOOR):
+        return None, "not_in_maker_target_range"
 
     if price_gap_to_half < PRICE_GAP_LIMIT:
         return None, "price gap below floor"

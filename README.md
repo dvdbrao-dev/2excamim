@@ -13,7 +13,8 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 ## Fuentes de señales
 
 ### Polymarket (activo)
-- Estrategia: VWAP reversion + MixMCP LLM
+- Estrategia base: `threshold_extremes` (sesgo NO-side) con umbrales configurables
+- Estrategia legacy opcional: `legacy_gap_to_half` (desactivada por defecto)
 - Mercados: 100 activos filtrados
 
 ### Binance Price Feed (activo)
@@ -27,11 +28,11 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 | Agente | Lenguaje | Función |
 |---|---|---|
 | market-watch | Rust | Descarga snapshots de gamma-api.polymarket.com |
-| signal_agent | Python | Genera signals por gap de precio vs 0.5 |
+| signal_agent | Python | Genera `signal.generated` por umbrales extremos con `signal_type` explícito |
 | scoring_agent | Python | Filtra mercados por gap >= 0.07 |
-| confirmation_agent | Python | Confirma signals con strength >= 0.6 |
-| probability_agent | Python | Estima probabilidad via gpt-4o-mini + MixMCP |
-| veto_agent | Python | Veta signals con probabilidad fuera de [0.10, 0.90] |
+| confirmation_agent | Python | Confirma solo con >=2 checks independientes (strength + calidad de mercado) |
+| probability_agent | Python | LLM advisory por defecto y salida utilizable solo con contexto suficiente |
+| veto_agent | Python | Veta signals confirmadas con probabilidad fuera de rango configurable `[floor, ceiling]` |
 | sizing_agent | Python | Kelly sizing sobre signals elegibles |
 | exit_agent | Python | Tres triggers de salida: target, volumen, decay |
 
@@ -46,5 +47,34 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 ```bash
 bash scripts/run_pipeline.sh
 ```
+
+## Replay y medición mínima
+
+### Replay/backtest mínimo (histórico de eventos)
+```bash
+python3 scripts/replay_backtest.py --store ./var/events.jsonl
+python3 scripts/replay_backtest.py --store ./var/events.jsonl --json
+```
+
+Qué mide:
+- reconstrucción mínima de señales/confirmaciones/vetoes/decisiones/fills desde JSONL
+- `pnl_gross`, `pnl_net`, costes (`fees + slippage + penalización de baja liquidez`), `trades`, `win_rate`
+- `exposure_mean` y `max_drawdown` (sobre PnL neto realizado)
+
+Qué no mide todavía:
+- mark-to-market completo de posiciones abiertas
+- microestructura real de ejecución (solo modelo de coste configurable en bps)
+- atribución causal perfecta cuando faltan `linkage` en eventos históricos
+
+### Reporte operativo por agente/estrategia (UMN mínimo)
+```bash
+python3 scripts/umn_report.py --store ./var/events.jsonl
+python3 scripts/umn_report.py --store ./var/events.jsonl --json
+```
+
+Qué entrega:
+- tabla por agente y por `signal_type/strategy` con `pnl_net`, `trades`, `costs`, `risk_proxy_drawdown`
+- métrica compuesta simple `umn_score` para comparación estable
+- clasificación pragmática: `contributor`, `neutral`, `negative`, `insufficient_data`
 
 ## Variables de entorno requeridas

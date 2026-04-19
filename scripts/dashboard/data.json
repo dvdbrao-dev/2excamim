@@ -1,5 +1,5 @@
 {
-  "updated": "2026-04-17 13:05 UTC",
+  "updated": "2026-04-17 18:45 UTC",
   "bot": {
     "name": "EXCAMIM",
     "emoji": "\u26a1",
@@ -475,16 +475,42 @@
       "role": "Notifications"
     }
   ],
-  "timers": [],
+  "timers": [
+    {
+      "name": "market-watch",
+      "next": "Fri 2026-04-17",
+      "status": "active"
+    },
+    {
+      "name": "dns-watchdog",
+      "next": "Fri 2026-04-17",
+      "status": "active"
+    },
+    {
+      "name": "disk-guard",
+      "next": "Fri 2026-04-17",
+      "status": "active"
+    },
+    {
+      "name": "llm-health",
+      "next": "Fri 2026-04-17",
+      "status": "active"
+    },
+    {
+      "name": "excamim-daily",
+      "next": "Sat 2026-04-18",
+      "status": "active"
+    }
+  ],
   "git_log": [
+    "431ada8 feat: crypto feed in dashboard + docs updated",
     "8defbf7 feat: crypto signals integrated in confirmation + sizing + telegram",
     "6b44ad8 feat: crypto price agent - Binance signals to Polymarket",
     "369aeb1 fix: kelly cap 5%, global 60% bankroll limit, dashboard filter",
     "452ba41 fix: systemd creates raw dir before pipeline - definitive fix",
     "1ce57b8 fix: repair_store always creates raw dir and discovery file",
     "82a9fa1 fix: kelly sizing debug + dashboard bankroll display",
-    "a0b6c36 feat: dashboard v3 - jarvis dark terminal redesign",
-    "b40e988 fix: bankroll dedup + line chart diario/semanal/mensual"
+    "a0b6c36 feat: dashboard v3 - jarvis dark terminal redesign"
   ],
   "pnl": {
     "status": "paper_trading - awaiting resolution",
@@ -529,7 +555,7 @@
   },
   "crypto": [],
   "system": {
-    "disk_pct": 41,
+    "disk_pct": 42,
     "events_total": 4910,
     "decisions_total": 8,
     "vetos_total": 219,

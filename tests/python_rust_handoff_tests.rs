@@ -9,7 +9,7 @@ use chrono::Utc;
 use serde_json::{json, Value};
 use twoexcamim::{
     events::{
-        DecisionAction, EventEnvelope, FillReceived, FillSide, Linkage, Provenance,
+        DecisionAction, EventEnvelope, FillReceived, FillSide, Linkage, MarketScored, Provenance,
         SignalConfirmed, SignalGenerated, SignalSide, SourceKind, VetoRaised, VetoScope,
     },
     runtime,
@@ -130,6 +130,15 @@ fn signal_linkage(signal_id: &str, market_id: &str) -> Linkage {
 }
 
 fn make_signal_event(signal_id: &str, market_id: &str, strength: f64) -> StoredEvent {
+    make_signal_event_with_side(signal_id, market_id, strength, SignalSide::Long)
+}
+
+fn make_signal_event_with_side(
+    signal_id: &str,
+    market_id: &str,
+    strength: f64,
+    side: SignalSide,
+) -> StoredEvent {
     let envelope = EventEnvelope::new_signal_generated(
         "signal-engine",
         Some(market_id.into()),
@@ -140,7 +149,7 @@ fn make_signal_event(signal_id: &str, market_id: &str, strength: f64) -> StoredE
             hypothesis_id: None,
             instrument: market_id.into(),
             timeframe: "1h".into(),
-            side: SignalSide::Long,
+            side,
             strength,
             rationale: Some("eligible".into()),
         },
@@ -151,6 +160,22 @@ fn make_signal_event(signal_id: &str, market_id: &str, strength: f64) -> StoredE
 }
 
 fn make_signal_confirmed(signal_id: &str, market_id: &str, confirmation_score: f64) -> StoredEvent {
+    make_signal_confirmed_with_contract(
+        signal_id,
+        market_id,
+        confirmation_score,
+        Some(confirmation_score),
+        Some(confirmation_score),
+    )
+}
+
+fn make_signal_confirmed_with_contract(
+    signal_id: &str,
+    market_id: &str,
+    confirmation_score: f64,
+    estimated_probability: Option<f64>,
+    heuristic_score: Option<f64>,
+) -> StoredEvent {
     let envelope = EventEnvelope::new_signal_confirmed(
         "confirmation-agent-v1",
         Some(market_id.into()),
@@ -165,7 +190,15 @@ fn make_signal_confirmed(signal_id: &str, market_id: &str, confirmation_score: f
     )
     .unwrap();
 
-    StoredEvent::try_from(envelope).unwrap()
+    let mut stored = StoredEvent::try_from(envelope).unwrap();
+    let payload = stored.payload.as_object_mut().unwrap();
+    if let Some(value) = estimated_probability {
+        payload.insert("estimated_probability".into(), json!(value));
+    }
+    if let Some(value) = heuristic_score {
+        payload.insert("heuristic_score".into(), json!(value));
+    }
+    stored
 }
 
 fn make_signal_veto(signal_id: &str, market_id: &str) -> StoredEvent {
@@ -251,6 +284,33 @@ fn make_decision_veto(decision_id: &str, market_id: &str) -> StoredEvent {
             reason_code: "exit_trigger".into(),
             reason_text: Some("posterior decision veto".into()),
             raised_by: "exit-agent-v1".into(),
+        },
+    )
+    .unwrap();
+
+    StoredEvent::try_from(envelope).unwrap()
+}
+
+fn make_market_scored(market_id: &str, score: f64) -> StoredEvent {
+    let envelope = EventEnvelope::new_market_scored(
+        "scoring-agent-v1",
+        Some(market_id.into()),
+        Linkage::default(),
+        signal_provenance(),
+        MarketScored {
+            market_id: market_id.into(),
+            score,
+            scored_on: "2026-04-14".into(),
+            market_price: 0.55,
+            price_gap_to_half: 0.05,
+            volume_usdc: 1000.0,
+            hours_to_resolution: 24.0,
+            parameters: twoexcamim::events::MarketScoredParameters {
+                price_gap_limit: 0.25,
+                min_volume_usdc: 100.0,
+                min_resolution_hours: 1.0,
+                max_resolution_hours: 168.0,
+            },
         },
     )
     .unwrap();
@@ -577,7 +637,7 @@ fn reports_reasonable_error_for_missing_input_file() {
 }
 
 #[test]
-fn signal_agent_skips_extreme_price_markets() {
+fn signal_agent_defaults_to_threshold_extremes_with_no_bias() {
     let watch_dir = temp_path("signal-watch", "tmp");
     let store_path = temp_path("signal-store", "jsonl");
     let snapshots_path = watch_dir.join("snapshots.jsonl");
@@ -587,21 +647,21 @@ fn signal_agent_skips_extreme_price_markets() {
         &snapshots_path,
         &[
             json!({
-                "market_id": "market-normal",
+                "market_id": "market-no-side",
                 "source": "Polymarket",
-                "title": "Will the normal market resolve?",
+                "title": "Will the NO-side market resolve?",
                 "status": "Open",
-                "best_bid": 0.34,
-                "best_ask": 0.48,
+                "best_bid": 0.70,
+                "best_ask": 0.74,
                 "observed_at": "2026-04-14T12:00:00Z"
             }),
             json!({
-                "market_id": "market-extreme",
+                "market_id": "market-yes-side",
                 "source": "Polymarket",
-                "title": "Will the extreme market resolve?",
+                "title": "Will the YES-side market resolve?",
                 "status": "Open",
-                "best_bid": 0.96,
-                "best_ask": 0.98,
+                "best_bid": 0.26,
+                "best_ask": 0.30,
                 "observed_at": "2026-04-14T12:05:00Z"
             }),
         ],
@@ -617,12 +677,15 @@ fn signal_agent_skips_extreme_price_markets() {
 
     assert_eq!(code, 0, "{stderr}");
     assert!(stdout.contains("\"signals_generated\":1"));
-    assert!(stdout.contains("\"skipped_extreme_price\":1"));
+    assert!(stdout.contains("\"signal_type\":\"threshold_extremes\""));
+    assert!(stdout.contains("\"skipped_no_bias_filter\":1"));
 
     let store = JsonlEventStore::new(&store_path).unwrap();
     let events = store.read_all().unwrap();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].event_type.as_str(), "signal.generated");
+    assert_eq!(events[0].payload["signal_type"], "threshold_extremes");
+    assert_eq!(events[0].payload["side"], "long_no");
 
     cleanup(&[&store_path]);
     let _ = fs::remove_dir_all(&watch_dir);
@@ -644,9 +707,9 @@ fn scoring_agent_emits_market_scored_and_confirmation_requires_it() {
                 "source": "Polymarket",
                 "title": "Will the test market resolve?",
                 "status": "Open",
-                "best_bid": 0.58,
-                "best_ask": 0.60,
-                "last_price": 0.59,
+                "best_bid": 0.10,
+                "best_ask": 0.14,
+                "last_price": 0.12,
                 "volume": 60000.0,
                 "observed_at": "2026-04-14T12:00:00Z"
             }),
@@ -693,7 +756,7 @@ fn scoring_agent_emits_market_scored_and_confirmation_requires_it() {
         run_python_script("agents/scoring_agent.py", &scoring_args);
     assert_eq!(score_code, 0, "{score_stderr}");
     assert!(score_stdout.contains("\"market_scored_this_run\":1"));
-    assert!(score_stdout.contains("\"price_too_extreme\":1"));
+    assert!(score_stdout.contains("\"not_in_maker_target_range\":1"));
 
     let store = JsonlEventStore::new(&store_path).unwrap();
     let scored_events = store.read_all().unwrap();
@@ -716,7 +779,8 @@ fn scoring_agent_emits_market_scored_and_confirmation_requires_it() {
     let (confirm_code, confirm_stdout, confirm_stderr) =
         run_python_script("agents/confirmation_agent.py", &confirm_args);
     assert_eq!(confirm_code, 0, "{confirm_stderr}");
-    assert!(confirm_stdout.contains("\"eligible_candidates\":1"));
+    assert!(confirm_stdout.contains("\"confirmed_via_cli\":1"));
+    assert!(confirm_stdout.contains("\"blocked_by_missing_market_score\":1"));
 
     let events = store.read_all().unwrap();
     let confirmed_signals: Vec<_> = events
@@ -726,6 +790,8 @@ fn scoring_agent_emits_market_scored_and_confirmation_requires_it() {
 
     assert_eq!(confirmed_signals.len(), 1);
     assert_eq!(confirmed_signals[0].payload["signal_id"], "signal-1");
+    assert!(confirmed_signals[0].payload["confirmation_reasons"].is_array());
+    assert!(confirmed_signals[0].payload["rejection_reasons"].is_array());
 
     cleanup(&[&store_path]);
     let _ = fs::remove_dir_all(&watch_dir);
@@ -947,6 +1013,273 @@ fn sizing_agent_skips_active_market_but_allows_vetoed_market() {
 }
 
 #[test]
+fn sizing_agent_handles_long_no_with_complementary_probability_and_price() {
+    let watch_dir = temp_path("sizing-watch-long-no", "tmp");
+    let store_path = temp_path("sizing-store-long-no", "jsonl");
+    let snapshots_path = watch_dir.join("snapshots.jsonl");
+
+    fs::create_dir_all(&watch_dir).unwrap();
+    write_jsonl(
+        &snapshots_path,
+        &[json!({
+            "market_id": "market-long-no",
+            "source": "Polymarket",
+            "title": "Long NO favorable",
+            "status": "Open",
+            "best_bid": 0.79,
+            "best_ask": 0.81,
+            "observed_at": "2026-04-14T12:00:00Z"
+        })],
+    );
+
+    let store = JsonlEventStore::new(&store_path).unwrap();
+    store
+        .append_events(&[
+            make_signal_event_with_side(
+                "signal-long-no",
+                "polymarket:market-long-no",
+                0.85,
+                SignalSide::Short,
+            ),
+            make_signal_confirmed_with_contract(
+                "signal-long-no",
+                "polymarket:market-long-no",
+                0.85,
+                Some(0.30),
+                Some(0.85),
+            ),
+        ])
+        .unwrap();
+
+    let sizing_args = vec![
+        "--store".into(),
+        store_path.display().to_string(),
+        "--watch-dir".into(),
+        watch_dir.display().to_string(),
+        "--bankroll".into(),
+        "1000.0".into(),
+    ];
+
+    let (code, stdout, stderr) = run_python_script("agents/sizing_agent.py", &sizing_args);
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.contains("\"decisions_written\":1"));
+    assert!(stdout.contains("\"vetoes_written\":0"));
+
+    let events = store.read_all().unwrap();
+    let decision = events
+        .iter()
+        .find(|event| event.event_type.as_str() == "decision.formed")
+        .unwrap();
+    assert_eq!(decision.payload["decision_id"], "decision-signal-long-no");
+    assert_eq!(decision.payload["size_hint"], 50.0);
+
+    cleanup(&[&store_path]);
+    let _ = fs::remove_dir_all(&watch_dir);
+}
+
+#[test]
+fn sizing_agent_skips_when_estimated_probability_is_missing() {
+    let watch_dir = temp_path("sizing-watch-missing-est-prob", "tmp");
+    let store_path = temp_path("sizing-store-missing-est-prob", "jsonl");
+    let snapshots_path = watch_dir.join("snapshots.jsonl");
+
+    fs::create_dir_all(&watch_dir).unwrap();
+    write_jsonl(
+        &snapshots_path,
+        &[json!({
+            "market_id": "market-missing-est-prob",
+            "source": "Polymarket",
+            "title": "Missing estimated probability",
+            "status": "Open",
+            "best_bid": 0.49,
+            "best_ask": 0.51,
+            "observed_at": "2026-04-14T12:00:00Z"
+        })],
+    );
+
+    let store = JsonlEventStore::new(&store_path).unwrap();
+    store
+        .append_events(&[
+            make_signal_event(
+                "signal-missing-est-prob",
+                "polymarket:market-missing-est-prob",
+                0.9,
+            ),
+            make_signal_confirmed_with_contract(
+                "signal-missing-est-prob",
+                "polymarket:market-missing-est-prob",
+                0.9,
+                None,
+                Some(0.9),
+            ),
+        ])
+        .unwrap();
+
+    let sizing_args = vec![
+        "--store".into(),
+        store_path.display().to_string(),
+        "--watch-dir".into(),
+        watch_dir.display().to_string(),
+        "--bankroll".into(),
+        "1000.0".into(),
+    ];
+
+    let (code, stdout, stderr) = run_python_script("agents/sizing_agent.py", &sizing_args);
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.contains("\"skipped_missing_estimated_probability\":1"));
+    assert!(stdout.contains("\"decisions_written\":0"));
+    assert!(stdout.contains("\"vetoes_written\":0"));
+
+    let events = store.read_all().unwrap();
+    let decisions = events
+        .iter()
+        .filter(|event| event.event_type.as_str() == "decision.formed")
+        .count();
+    let vetoes = events
+        .iter()
+        .filter(|event| {
+            event.event_type.as_str() == "veto.raised" && event.payload["scope"] == "Signal"
+        })
+        .count();
+    assert_eq!(decisions, 0);
+    assert_eq!(vetoes, 0);
+
+    cleanup(&[&store_path]);
+    let _ = fs::remove_dir_all(&watch_dir);
+}
+
+#[test]
+fn confirmation_agent_does_not_fallback_to_jsonl_when_subprocess_fails() {
+    let store_path = temp_path("confirm-fail-store", "jsonl");
+    let store = JsonlEventStore::new(&store_path).unwrap();
+    store
+        .append_events(&[
+            make_market_scored("market-1", 0.9),
+            make_signal_event("signal-1", "polymarket:market-1", 0.92),
+        ])
+        .unwrap();
+
+    let confirm_args = vec![
+        "--store".into(),
+        store_path.display().to_string(),
+        "--cargo-bin".into(),
+        "/definitely-missing-cargo-bin".into(),
+    ];
+    let (code, stdout, stderr) = run_python_script("agents/confirmation_agent.py", &confirm_args);
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.contains("\"persistence_failures\":1"));
+    assert!(stdout.contains("\"total_confirmed_this_run\":0"));
+
+    let events = store.read_all().unwrap();
+    let confirmed = events
+        .iter()
+        .filter(|event| event.event_type.as_str() == "signal.confirmed")
+        .count();
+    assert_eq!(confirmed, 0);
+
+    cleanup(&[&store_path]);
+}
+
+#[test]
+fn confirmation_agent_requires_independent_checks() {
+    let store_path = temp_path("confirm-independent-store", "jsonl");
+    let store = JsonlEventStore::new(&store_path).unwrap();
+    store
+        .append_events(&[
+            make_market_scored("market-1", 0.90),
+            make_signal_event("signal-1", "polymarket:market-1", 0.92),
+        ])
+        .unwrap();
+
+    let confirm_args = vec![
+        "--store".into(),
+        store_path.display().to_string(),
+        "--min-market-score".into(),
+        "0.95".into(),
+        "--min-volume-usdc".into(),
+        "50000".into(),
+        "--min-hours-to-resolution".into(),
+        "48".into(),
+        "--required-positive-checks".into(),
+        "2".into(),
+    ];
+    let (code, stdout, stderr) = run_python_script("agents/confirmation_agent.py", &confirm_args);
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.contains("\"confirmed_via_cli\":0"));
+    assert!(stdout.contains("\"rejected_candidates\":1"));
+    assert!(stdout.contains("\"rejection_reasons\""));
+    assert!(stdout.contains("positive_checks"));
+
+    let events = store.read_all().unwrap();
+    let confirmed = events
+        .iter()
+        .filter(|event| event.event_type.as_str() == "signal.confirmed")
+        .count();
+    assert_eq!(confirmed, 0);
+
+    cleanup(&[&store_path]);
+}
+
+#[test]
+fn veto_agent_applies_probability_floor_and_ceiling() {
+    let store_path = temp_path("veto-range-store", "jsonl");
+    let store = JsonlEventStore::new(&store_path).unwrap();
+    store
+        .append_events(&[
+            make_signal_event("signal-low", "polymarket:market-low", 0.8),
+            make_signal_confirmed_with_contract(
+                "signal-low",
+                "polymarket:market-low",
+                0.05,
+                Some(0.05),
+                Some(0.05),
+            ),
+            make_signal_event("signal-mid", "polymarket:market-mid", 0.8),
+            make_signal_confirmed_with_contract(
+                "signal-mid",
+                "polymarket:market-mid",
+                0.50,
+                Some(0.50),
+                Some(0.50),
+            ),
+            make_signal_event("signal-high", "polymarket:market-high", 0.8),
+            make_signal_confirmed_with_contract(
+                "signal-high",
+                "polymarket:market-high",
+                0.95,
+                Some(0.95),
+                Some(0.95),
+            ),
+        ])
+        .unwrap();
+
+    let args = vec!["--store".into(), store_path.display().to_string()];
+    let (code, stdout, stderr) = run_python_script("agents/veto_agent.py", &args);
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.contains("\"below_floor\":1"));
+    assert!(stdout.contains("\"inside_range\":1"));
+    assert!(stdout.contains("\"above_ceiling\":1"));
+    assert!(stdout.contains("\"vetoed_signals\":2"));
+
+    let events = store.read_all().unwrap();
+    let vetoes: Vec<_> = events
+        .iter()
+        .filter(|event| event.event_type.as_str() == "veto.raised")
+        .collect();
+    assert_eq!(vetoes.len(), 2);
+    assert!(vetoes.iter().any(|event| {
+        event.payload["target_id"] == "signal-low"
+            && event.payload["reason_code"] == "research_probability_below_floor"
+    }));
+    assert!(vetoes.iter().any(|event| {
+        event.payload["target_id"] == "signal-high"
+            && event.payload["reason_code"] == "research_probability_above_ceiling"
+    }));
+
+    cleanup(&[&store_path]);
+}
+
+#[test]
 fn exit_agent_raises_decision_veto_for_target_hit_and_is_idempotent() {
     let watch_dir = temp_path("exit-watch", "tmp");
     let store_path = temp_path("exit-store", "jsonl");
@@ -1017,4 +1350,100 @@ fn exit_agent_raises_decision_veto_for_target_hit_and_is_idempotent() {
 
     cleanup(&[&store_path]);
     let _ = fs::remove_dir_all(&watch_dir);
+}
+
+#[test]
+fn replay_backtest_script_emits_json_metrics() {
+    let store_path = temp_path("replay-store", "jsonl");
+    let store = JsonlEventStore::new(&store_path).unwrap();
+    store
+        .append_events(&[
+            make_market_scored("market-1", 0.9),
+            make_signal_event("signal-1", "polymarket:market-1", 0.8),
+            make_decision_formed("decision-1", "signal-1", "polymarket:market-1"),
+            make_fill_received(
+                "decision-1",
+                "pm-paper-order-yes-decision-1",
+                "polymarket:market-1",
+                "fill-buy-1",
+                FillSide::Buy,
+                10.0,
+                0.40,
+                "2026-04-14T11:00:00Z",
+            ),
+            make_fill_received(
+                "decision-1",
+                "pm-paper-order-yes-decision-1",
+                "polymarket:market-1",
+                "fill-sell-1",
+                FillSide::Sell,
+                10.0,
+                0.55,
+                "2026-04-14T12:00:00Z",
+            ),
+        ])
+        .unwrap();
+
+    let args = vec![
+        "--store".into(),
+        store_path.display().to_string(),
+        "--json".into(),
+    ];
+    let (code, stdout, stderr) = run_python_script("scripts/replay_backtest.py", &args);
+    assert_eq!(code, 0, "{stderr}");
+    let parsed: Value = serde_json::from_str(&stdout).unwrap();
+    assert!(parsed["metrics"]["pnl_gross"].as_f64().unwrap() > 0.0);
+    assert!(parsed["metrics"]["trades"].as_u64().unwrap() >= 1);
+    assert_eq!(parsed["pipeline_counts"]["decision.formed"], 1);
+    assert_eq!(parsed["pipeline_counts"]["fill.received"], 2);
+
+    cleanup(&[&store_path]);
+}
+
+#[test]
+fn umn_report_script_emits_agent_and_strategy_sections() {
+    let store_path = temp_path("umn-store", "jsonl");
+    let store = JsonlEventStore::new(&store_path).unwrap();
+    store
+        .append_events(&[
+            make_market_scored("market-1", 0.9),
+            make_signal_event("signal-1", "polymarket:market-1", 0.8),
+            make_decision_formed("decision-1", "signal-1", "polymarket:market-1"),
+            make_fill_received(
+                "decision-1",
+                "pm-paper-order-yes-decision-1",
+                "polymarket:market-1",
+                "fill-buy-1",
+                FillSide::Buy,
+                10.0,
+                0.40,
+                "2026-04-14T11:00:00Z",
+            ),
+            make_fill_received(
+                "decision-1",
+                "pm-paper-order-yes-decision-1",
+                "polymarket:market-1",
+                "fill-sell-1",
+                FillSide::Sell,
+                10.0,
+                0.55,
+                "2026-04-14T12:00:00Z",
+            ),
+        ])
+        .unwrap();
+
+    let args = vec![
+        "--store".into(),
+        store_path.display().to_string(),
+        "--json".into(),
+    ];
+    let (code, stdout, stderr) = run_python_script("scripts/umn_report.py", &args);
+    assert_eq!(code, 0, "{stderr}");
+    let parsed: Value = serde_json::from_str(&stdout).unwrap();
+    assert!(parsed["agents"].as_array().is_some());
+    assert!(parsed["strategies"].as_array().is_some());
+    assert!(!parsed["agents"].as_array().unwrap().is_empty());
+    assert!(!parsed["strategies"].as_array().unwrap().is_empty());
+
+    cleanup(&[&store_path]);
 }

@@ -51,6 +51,9 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError
     let mut price = None;
     let mut venue = None;
     let mut executed_at = None;
+    let mut confirmed_by = None;
+    let mut confirmation_reasons = None;
+    let mut rejection_reasons = None;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -222,6 +225,21 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError
             "--price" => price = Some(required_flag_value(&mut args, "--price")?),
             "--venue" => venue = Some(required_flag_value(&mut args, "--venue")?),
             "--executed-at" => executed_at = Some(required_flag_value(&mut args, "--executed-at")?),
+            "--confirmed-by" => {
+                confirmed_by = Some(required_flag_value(&mut args, "--confirmed-by")?);
+            }
+            "--confirmation-reasons-json" => {
+                confirmation_reasons = Some(parse_json_string_list(
+                    &required_flag_value(&mut args, "--confirmation-reasons-json")?,
+                    "--confirmation-reasons-json",
+                )?);
+            }
+            "--rejection-reasons-json" => {
+                rejection_reasons = Some(parse_json_string_list(
+                    &required_flag_value(&mut args, "--rejection-reasons-json")?,
+                    "--rejection-reasons-json",
+                )?);
+            }
             "-h" | "--help" => {
                 return Ok(ParseOutcome::Help);
             }
@@ -294,6 +312,14 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError
         [ingest, kind, path] if ingest == "ingest" && kind == "research-signals" => {
             Command::IngestResearchSignals {
                 input_path: PathBuf::from(path),
+            }
+        }
+        [confirm, entity, signal_id] if confirm == "confirm" && entity == "signal" => {
+            Command::ConfirmSignal {
+                signal_id: signal_id.clone(),
+                confirmed_by: required_value(confirmed_by, "--confirmed-by")?,
+                confirmation_reasons,
+                rejection_reasons,
             }
         }
         [confirm, entity] if confirm == "confirm" && entity == "signals" => Command::ConfirmSignals,
@@ -409,7 +435,7 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<ParseOutcome, RuntimeError
 
 pub(crate) fn usage() -> String {
     let base = format!(
-        "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim confirm signals [--store PATH] [--policy-file PATH] [--json]\n  twoexcamim confirm-signals [--store PATH] [--policy-file PATH] [--json]\n  twoexcamim measure-confirmation-outcomes [--store PATH] [--snapshots PATH] [--horizon-seconds N] [--delta-threshold N] [--json]\n  twoexcamim evaluate-confirmation-policy [--store PATH] [--snapshots PATH] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--json]\n  twoexcamim walkforward-confirmation-policy [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--json]\n  twoexcamim propose-confirmation-policy [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--output PATH] [--json]\n  twoexcamim materialize-confirmation-readiness [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--output PATH] [--json]\n  twoexcamim simulate-paper-fill --order-id ID --decision-id ID --market SLUG --outcome OUTCOME --side <buy|sell> --amount-usd N [--backend-account NAME] [--backend-data-dir PATH] [--backend-trades-json PATH] [--store PATH] [--dry-run] [--json]\n  twoexcamim run-paper-decisions [--store PATH] [--backend-account NAME] [--backend-data-dir PATH] [--backend-trades-json PATH] [--usd-size N] [--max-open-positions N] [--max-total-notional-exposure N] [--max-exposure-per-market N] [--max-orders-per-market N] [--block-same-market-same-outcome-if-open] [--dry-run] [--json]\n  twoexcamim run-paper-pipeline [--research-signals PATH] [--store PATH] [--policy-file PATH] [--backend-account NAME] [--backend-data-dir PATH] [--backend-trades-json PATH] [--usd-size N] [--max-open-positions N] [--max-total-notional-exposure N] [--max-exposure-per-market N] [--max-orders-per-market N] [--block-same-market-same-outcome-if-open] [--materialize-readiness] [--dry-run] [--json]\n  twoexcamim generate-operational-summary [--store PATH] [--policy-file PATH] [--output PATH] [--format json|markdown] [--json]\n  twoexcamim show-paper-ledger [--store PATH] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize orders [--store PATH] [--dry-run] [--json]\n  twoexcamim submit orders [--store PATH] [--dry-run] [--json]\n  twoexcamim observe fill --fill-id ID --order-id ID --side <buy|sell> --quantity N --price N --executed-at RFC3339 [--decision-id ID] [--instrument VALUE] [--venue VALUE] [--store PATH] [--dry-run] [--json]\n  twoexcamim run batch --research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim confirm-signals --store ./var/events.jsonl --policy-file ./policies/confirmation_policy.json\n  twoexcamim measure-confirmation-outcomes --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --json\n  twoexcamim evaluate-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --horizons 3600,7200 --confidence-thresholds 0.5,0.6,0.7 --json\n  twoexcamim walkforward-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --horizons 3600,7200 --confidence-thresholds 0.5,0.6,0.7 --json\n  twoexcamim propose-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --confidence-thresholds 0.5,0.6,0.7 --output ./policies/proposed_confirmation_policy.json\n  twoexcamim materialize-confirmation-readiness --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --output ./var/readiness/confirmation_readiness.json\n  twoexcamim simulate-paper-fill --order-id ord-1 --decision-id dec-1 --market will-bitcoin-hit-100k --outcome yes --side buy --amount-usd 100 --backend-trades-json ./tests/fixtures/polymarket_trades.json --json\n  twoexcamim run-paper-decisions --store ./var/events.jsonl --backend-trades-json ./tests/fixtures/polymarket_trades.json --usd-size 100 --max-open-positions 5 --max-exposure-per-market 250 --json\n  twoexcamim run-paper-pipeline --store ./var/events.jsonl --backend-trades-json ./tests/fixtures/polymarket_trades.json --usd-size 100 --json\n  twoexcamim generate-operational-summary --store ./var/events.jsonl --output ./var/operations/latest_summary.md --format markdown\n  twoexcamim show-paper-ledger --store ./var/events.jsonl --json\n  twoexcamim materialize decisions --dry-run --json\n  twoexcamim materialize orders --dry-run --json\n  twoexcamim submit orders --dry-run --json\n  twoexcamim observe fill --fill-id fill-1 --order-id ord-1 --side buy --quantity 1 --price 0.54 --executed-at 2026-04-07T00:00:00Z --dry-run\n  twoexcamim run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run\n\nDefault store path: {DEFAULT_STORE_PATH}\nDefault snapshots path: {DEFAULT_SNAPSHOTS_PATH}"
+        "2EXCAMIM Runtime CLI\n\nUsage:\n  twoexcamim summary [--store PATH] [--json]\n  twoexcamim inspect <signal|decision|order|fill> <id> [--store PATH] [--json]\n  twoexcamim policy <signal|decision|order> <id> [--store PATH] [--json]\n  twoexcamim ingest research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n  twoexcamim confirm signal <id> --confirmed-by ACTOR [--store PATH] [--json]\n  twoexcamim confirm signals [--store PATH] [--policy-file PATH] [--json]\n  twoexcamim confirm-signals [--store PATH] [--policy-file PATH] [--json]\n  twoexcamim measure-confirmation-outcomes [--store PATH] [--snapshots PATH] [--horizon-seconds N] [--delta-threshold N] [--json]\n  twoexcamim evaluate-confirmation-policy [--store PATH] [--snapshots PATH] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--json]\n  twoexcamim walkforward-confirmation-policy [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--json]\n  twoexcamim propose-confirmation-policy [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--output PATH] [--json]\n  twoexcamim materialize-confirmation-readiness [--store PATH] [--snapshots PATH] [--eras N | --window-size SECONDS] [--horizons CSV] [--confidence-thresholds CSV] [--delta-threshold N] [--output PATH] [--json]\n  twoexcamim simulate-paper-fill --order-id ID --decision-id ID --market SLUG --outcome OUTCOME --side <buy|sell> --amount-usd N [--backend-account NAME] [--backend-data-dir PATH] [--backend-trades-json PATH] [--store PATH] [--dry-run] [--json]\n  twoexcamim run-paper-decisions [--store PATH] [--backend-account NAME] [--backend-data-dir PATH] [--backend-trades-json PATH] [--usd-size N] [--max-open-positions N] [--max-total-notional-exposure N] [--max-exposure-per-market N] [--max-orders-per-market N] [--block-same-market-same-outcome-if-open] [--dry-run] [--json]\n  twoexcamim run-paper-pipeline [--research-signals PATH] [--store PATH] [--policy-file PATH] [--backend-account NAME] [--backend-data-dir PATH] [--backend-trades-json PATH] [--usd-size N] [--max-open-positions N] [--max-total-notional-exposure N] [--max-exposure-per-market N] [--max-orders-per-market N] [--block-same-market-same-outcome-if-open] [--materialize-readiness] [--dry-run] [--json]\n  twoexcamim generate-operational-summary [--store PATH] [--policy-file PATH] [--output PATH] [--format json|markdown] [--json]\n  twoexcamim show-paper-ledger [--store PATH] [--json]\n  twoexcamim materialize decisions [--store PATH] [--dry-run] [--json]\n  twoexcamim materialize orders [--store PATH] [--dry-run] [--json]\n  twoexcamim submit orders [--store PATH] [--dry-run] [--json]\n  twoexcamim observe fill --fill-id ID --order-id ID --side <buy|sell> --quantity N --price N --executed-at RFC3339 [--decision-id ID] [--instrument VALUE] [--venue VALUE] [--store PATH] [--dry-run] [--json]\n  twoexcamim run batch --research-signals <input.parquet> [--store PATH] [--dry-run] [--json]\n\nAliases:\n  twoexcamim signal <id>\n  twoexcamim decision <id>\n  twoexcamim order <id>\n  twoexcamim fill <id>\n\nExamples:\n  twoexcamim summary\n  twoexcamim inspect signal sig-1 --store ./var/events.jsonl\n  twoexcamim policy signal sig-1 --json\n  twoexcamim ingest research-signals research_prediction_markets/output/signals/latest_signals.parquet --dry-run\n  twoexcamim confirm signal sig-1 --confirmed-by confirmation-agent-v1 --store ./var/events.jsonl\n  twoexcamim confirm-signals --store ./var/events.jsonl --policy-file ./policies/confirmation_policy.json\n  twoexcamim measure-confirmation-outcomes --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --json\n  twoexcamim evaluate-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --horizons 3600,7200 --confidence-thresholds 0.5,0.6,0.7 --json\n  twoexcamim walkforward-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --horizons 3600,7200 --confidence-thresholds 0.5,0.6,0.7 --json\n  twoexcamim propose-confirmation-policy --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --confidence-thresholds 0.5,0.6,0.7 --output ./policies/proposed_confirmation_policy.json\n  twoexcamim materialize-confirmation-readiness --store ./var/events.jsonl --snapshots ./var/market_snapshots.jsonl --eras 4 --output ./var/readiness/confirmation_readiness.json\n  twoexcamim simulate-paper-fill --order-id ord-1 --decision-id dec-1 --market will-bitcoin-hit-100k --outcome yes --side buy --amount-usd 100 --backend-trades-json ./tests/fixtures/polymarket_trades.json --json\n  twoexcamim run-paper-decisions --store ./var/events.jsonl --backend-trades-json ./tests/fixtures/polymarket_trades.json --usd-size 100 --max-open-positions 5 --max-exposure-per-market 250 --json\n  twoexcamim run-paper-pipeline --store ./var/events.jsonl --backend-trades-json ./tests/fixtures/polymarket_trades.json --usd-size 100 --json\n  twoexcamim generate-operational-summary --store ./var/events.jsonl --output ./var/operations/latest_summary.md --format markdown\n  twoexcamim show-paper-ledger --store ./var/events.jsonl --json\n  twoexcamim materialize decisions --dry-run --json\n  twoexcamim materialize orders --dry-run --json\n  twoexcamim submit orders --dry-run --json\n  twoexcamim observe fill --fill-id fill-1 --order-id ord-1 --side buy --quantity 1 --price 0.54 --executed-at 2026-04-07T00:00:00Z --dry-run\n  twoexcamim run batch --research-signals research_prediction_markets/output/signals/latest_signals.parquet --store ./var/events.jsonl --dry-run\n\nDefault store path: {DEFAULT_STORE_PATH}\nDefault snapshots path: {DEFAULT_SNAPSHOTS_PATH}"
     );
     format!(
         "{base}\n\nDashboard:\n  twoexcamim serve-dashboard [--store PATH] [--policy-file PATH] [--output PATH] [--host HOST] [--port PORT] [--json]\n\nDashboard example:\n  twoexcamim serve-dashboard --store ./var/events.jsonl --policy-file ./policies/confirmation_policy.json --output ./var/dashboard/control_room.html --host 0.0.0.0 --port 8000"
@@ -457,6 +483,20 @@ fn parse_operational_summary_format(
             usage()
         ))),
     }
+}
+
+fn parse_json_string_list(value: &str, flag: &str) -> Result<Vec<String>, RuntimeError> {
+    let parsed = serde_json::from_str::<Vec<String>>(value).map_err(|_| {
+        RuntimeError::Usage(format!(
+            "invalid JSON array for {flag}: expected [\"...\"]\n\n{}",
+            usage()
+        ))
+    })?;
+    Ok(parsed
+        .into_iter()
+        .map(|item| item.trim().to_string())
+        .filter(|item| !item.is_empty())
+        .collect())
 }
 
 fn parse_csv_i64(value: &str, flag: &str) -> Result<Vec<i64>, RuntimeError> {
@@ -579,6 +619,60 @@ mod tests {
             Some(std::path::PathBuf::from(
                 "policies/confirmation_policy.json"
             ))
+        );
+    }
+
+    #[test]
+    fn parses_confirm_signal_command() {
+        let parsed = parse_args(vec![
+            "twoexcamim".into(),
+            "confirm".into(),
+            "signal".into(),
+            "sig-123".into(),
+            "--confirmed-by".into(),
+            "confirmation-agent-v1".into(),
+        ])
+        .unwrap();
+        let ParseOutcome::Config(config) = parsed else {
+            panic!("expected config");
+        };
+        assert_eq!(
+            config.command,
+            Command::ConfirmSignal {
+                signal_id: "sig-123".into(),
+                confirmed_by: "confirmation-agent-v1".into(),
+                confirmation_reasons: None,
+                rejection_reasons: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_confirm_signal_reason_lists() {
+        let parsed = parse_args(vec![
+            "twoexcamim".into(),
+            "confirm".into(),
+            "signal".into(),
+            "sig-123".into(),
+            "--confirmed-by".into(),
+            "confirmation-agent-v1".into(),
+            "--confirmation-reasons-json".into(),
+            "[\"check-a\",\"check-b\"]".into(),
+            "--rejection-reasons-json".into(),
+            "[\"not-used\"]".into(),
+        ])
+        .unwrap();
+        let ParseOutcome::Config(config) = parsed else {
+            panic!("expected config");
+        };
+        assert_eq!(
+            config.command,
+            Command::ConfirmSignal {
+                signal_id: "sig-123".into(),
+                confirmed_by: "confirmation-agent-v1".into(),
+                confirmation_reasons: Some(vec!["check-a".into(), "check-b".into()]),
+                rejection_reasons: Some(vec!["not-used".into()]),
+            }
         );
     }
 

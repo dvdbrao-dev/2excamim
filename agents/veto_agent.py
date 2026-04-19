@@ -21,9 +21,11 @@ from typing import Any
 AGENT_ID = "veto-agent-v1"
 DEFAULT_STORE = Path("./var/events.jsonl")
 DEFAULT_PROBABILITY_FLOOR = 0.10
+DEFAULT_PROBABILITY_CEILING = 0.90
 PRODUCED_BY = "runtime.agent.veto"
-REASON_CODE = "research_probability_below_floor"
-RULE_NAME = "confirmed_signal_probability_floor"
+REASON_CODE_BELOW_FLOOR = "research_probability_below_floor"
+REASON_CODE_ABOVE_CEILING = "research_probability_above_ceiling"
+RULE_NAME = "confirmed_signal_probability_range"
 
 PROBABILITY_PATTERN = re.compile(r"\bprobability=([0-9]+(?:\.[0-9]+)?)\b")
 
@@ -38,6 +40,7 @@ class SignalContext:
     generated_event_id: str | None
     confirmation_event_id: str | None
     probability: float | None = None
+    probability_source: str | None = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,7 +50,13 @@ def parse_args() -> argparse.Namespace:
         "--probability-floor",
         type=float,
         default=DEFAULT_PROBABILITY_FLOOR,
-        help="Minimum research probability required to avoid veto.",
+        help="Minimum probability accepted for confirmed signals.",
+    )
+    parser.add_argument(
+        "--probability-ceiling",
+        type=float,
+        default=DEFAULT_PROBABILITY_CEILING,
+        help="Maximum probability accepted for confirmed signals.",
     )
     parser.add_argument(
         "--dry-run",
@@ -124,7 +133,7 @@ def parse_probability_from_rationale(rationale: Any) -> float | None:
 
 
 def deterministic_veto_id(signal_id: str) -> str:
-    return f"veto-signal-{signal_id}-{REASON_CODE}"
+    return f"veto-signal-{signal_id}-{RULE_NAME}"
 
 
 def collect_signal_contexts(
@@ -170,6 +179,7 @@ def collect_signal_contexts(
                 probability = parse_probability_from_rationale(payload.get("rationale"))
             if probability is not None:
                 context.probability = probability
+                context.probability_source = "signal.generated"
 
         elif event_type == "signal.confirmed":
             signal_id = payload.get("signal_id")
@@ -194,6 +204,14 @@ def collect_signal_contexts(
             context.hypothesis_id = context.hypothesis_id or linkage.get("hypothesis_id")
             context.correlation_id = context.correlation_id or linkage.get("correlation_id")
             context.confirmation_event_id = context.confirmation_event_id or event.get("event_id")
+            probability = extract_probability(payload)
+            if probability is None and isinstance(payload.get("estimated_probability"), (int, float)):
+                probability = float(payload.get("estimated_probability"))
+            if probability is None and isinstance(payload.get("confirmation_score"), (int, float)):
+                probability = float(payload.get("confirmation_score"))
+            if probability is not None and 0.0 <= probability <= 1.0:
+                context.probability = probability
+                context.probability_source = "signal.confirmed"
 
         elif event_type == "veto.raised":
             scope = payload.get("scope")
@@ -210,15 +228,25 @@ def collect_signal_contexts(
 
 
 def build_veto_event(
-    context: SignalContext, run_id: str, probability_floor: float
+    context: SignalContext,
+    run_id: str,
+    probability_floor: float,
+    probability_ceiling: float,
+    reason_code: str,
 ) -> dict[str, Any]:
     probability = context.probability
     assert probability is not None
 
-    reason_text = (
-        f"confirmed signal vetoed because probability {probability:.6f} "
-        f"is below floor {probability_floor:.6f}"
-    )
+    if reason_code == REASON_CODE_BELOW_FLOOR:
+        reason_text = (
+            f"confirmed signal vetoed because probability {probability:.6f} "
+            f"is below floor {probability_floor:.6f}"
+        )
+    else:
+        reason_text = (
+            f"confirmed signal vetoed because probability {probability:.6f} "
+            f"is above ceiling {probability_ceiling:.6f}"
+        )
     return {
         "event_id": str(uuid.uuid4()),
         "event_type": "veto.raised",
@@ -245,9 +273,11 @@ def build_veto_event(
             "notes": json.dumps(
                 {
                     "rule": RULE_NAME,
-                    "reason_code": REASON_CODE,
+                    "reason_code": reason_code,
                     "probability": probability,
                     "probability_floor": probability_floor,
+                    "probability_ceiling": probability_ceiling,
+                    "probability_source": context.probability_source,
                 },
                 separators=(",", ":"),
                 sort_keys=True,
@@ -257,7 +287,7 @@ def build_veto_event(
             "veto_id": deterministic_veto_id(context.signal_id),
             "scope": "Signal",
             "target_id": context.signal_id,
-            "reason_code": REASON_CODE,
+            "reason_code": reason_code,
             "reason_text": reason_text,
             "raised_by": AGENT_ID,
         },
@@ -274,6 +304,10 @@ def main() -> int:
     args = parse_args()
     if not 0.0 <= args.probability_floor <= 1.0:
         raise SystemExit("--probability-floor must be within [0,1]")
+    if not 0.0 <= args.probability_ceiling <= 1.0:
+        raise SystemExit("--probability-ceiling must be within [0,1]")
+    if args.probability_floor >= args.probability_ceiling:
+        raise SystemExit("--probability-floor must be lower than --probability-ceiling")
 
     store_path = Path(args.store)
     run_id = execution_run_id()
@@ -286,7 +320,9 @@ def main() -> int:
     duplicates_detected = 0
     already_vetoed = 0
     missing_probability = 0
-    above_floor = 0
+    inside_range = 0
+    above_ceiling = 0
+    below_floor = 0
 
     for signal_id in sorted(confirmed_signals):
         inspected += 1
@@ -312,13 +348,29 @@ def main() -> int:
             skipped += 1
             continue
 
-        if probability >= args.probability_floor:
-            above_floor += 1
+        reason_code: str | None = None
+        if probability < args.probability_floor:
+            below_floor += 1
+            reason_code = REASON_CODE_BELOW_FLOOR
+        elif probability > args.probability_ceiling:
+            above_ceiling += 1
+            reason_code = REASON_CODE_ABOVE_CEILING
+        else:
+            inside_range += 1
             skipped += 1
             continue
 
         if not args.dry_run:
-            append_event(store_path, build_veto_event(context, run_id, args.probability_floor))
+            append_event(
+                store_path,
+                build_veto_event(
+                    context,
+                    run_id,
+                    args.probability_floor,
+                    args.probability_ceiling,
+                    reason_code,
+                ),
+            )
         vetoed += 1
 
     print(
@@ -329,13 +381,16 @@ def main() -> int:
                 "store": str(store_path),
                 "dry_run": args.dry_run,
                 "probability_floor": args.probability_floor,
+                "probability_ceiling": args.probability_ceiling,
                 "inspected_signals": inspected,
                 "vetoed_signals": vetoed,
                 "skipped_signals": skipped,
                 "duplicates_detected": duplicates_detected,
                 "already_vetoed_elsewhere": already_vetoed,
                 "missing_probability": missing_probability,
-                "above_floor": above_floor,
+                "inside_range": inside_range,
+                "below_floor": below_floor,
+                "above_ceiling": above_ceiling,
             },
             separators=(",", ":"),
             sort_keys=True,
