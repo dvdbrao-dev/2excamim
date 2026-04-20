@@ -392,6 +392,14 @@ def evaluate_market_candidate(
             rejection_reasons.append("hours_to_resolution missing")
 
     confirmed = len(confirmation_reasons) >= args.required_positive_checks
+    # hours_to_resolution es un check obligatorio —
+    # si falla, la señal no puede confirmarse
+    hours_failed = any(
+        "hours_to_resolution" in r and "outside" in r
+        for r in rejection_reasons
+    )
+    if hours_failed:
+        confirmed = False
     if not confirmed and len(confirmation_reasons) < args.required_positive_checks:
         rejection_reasons.append(
             f"positive_checks={len(confirmation_reasons)} < required_positive_checks={args.required_positive_checks}"
