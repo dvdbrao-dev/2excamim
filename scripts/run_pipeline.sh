@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export PYTHONPATH="${PYTHONPATH:-/root/2excamim}"
 python3 scripts/repair_store.py
 set -euo pipefail
 
