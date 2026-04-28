@@ -1,0 +1,8 @@
+min_signals_for_shadow: 20
+min_signals_for_promotion: 100
+min_expectancy_for_promotion: 0.0
+min_profit_factor_for_promotion: 1.2
+max_drawdown_allowed: 0.15
+min_confidence_for_promotion: 0.60
+freeze_after_negative_windows: 3
+reject_after_failed_runs: 5

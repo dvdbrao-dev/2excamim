@@ -9,6 +9,7 @@ if [[ "${ENABLE_CRYPTO_STRATEGIES:-0}" == "1" ]]; then
   python3 agents/crypto_adx_ema_pullback_agent.py --store ./var/events.jsonl --cache-dir ./var/crypto_ohlcv || echo "WARN: crypto_adx_ema_pullback_agent failed, continuing"
   python3 agents/crypto_volatility_breakout_agent.py --store ./var/events.jsonl --cache-dir ./var/crypto_ohlcv || echo "WARN: crypto_volatility_breakout_agent failed, continuing"
   python3 agents/crypto_strategy_scorecard_agent.py --store ./var/events.jsonl --json || echo "WARN: crypto_strategy_scorecard_agent failed, continuing"
+  python3 agents/crypto_strategy_incubator_agent.py --json || echo "WARN crypto_strategy_incubator_agent failed"
 fi
 python3 agents/scoring_agent.py --store ./var/events.jsonl --watch-dir ./var/market-watch
 python3 agents/signal_agent.py --store ./var/events.jsonl --watch-dir ./var/market-watch

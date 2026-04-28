@@ -93,6 +93,48 @@ Interpretación rápida:
 - `PROMOTE_CANDIDATE`: señales + fills + PnL positivo consistente
 - `KILL`: veto estructural dominante
 
+## Darwinian Strategy Incubator
+
+`agents/crypto_strategy_incubator_agent.py` añade una capa de gobernanza para evitar que estrategias sin edge contaminen el laboratorio.
+
+Modo operativo:
+- `paper_shadow_only` (sin ejecución real, sin llaves, sin órdenes live)
+
+Estados de estrategia:
+- `candidate`: estrategia nueva o con muestra insuficiente.
+- `shadow`: ya genera muestra útil y sigue en observación.
+- `promoted`: supera umbrales mínimos de calidad y consistencia.
+- `frozen`: degradación temporal (drawdown o ventanas negativas) hasta nueva evidencia.
+- `rejected`: fallo repetido estructural; no debe seguir en rotación activa.
+
+Reglas iniciales (configurables):
+- Archivo: `config/crypto_strategy_incubator.yaml`
+- `min_signals_for_shadow: 20`
+- `min_signals_for_promotion: 100`
+- `min_expectancy_for_promotion: 0.0`
+- `min_profit_factor_for_promotion: 1.2`
+- `max_drawdown_allowed: 0.15`
+- `min_confidence_for_promotion: 0.60`
+- `freeze_after_negative_windows: 3`
+- `reject_after_failed_runs: 5`
+
+Registro y trazabilidad:
+- Registry runtime: `runtime/crypto_strategy_registry.json`
+- Ejemplo versionado: `data/crypto_strategy_registry.example.json`
+- Cada evaluación actualiza estado, contadores y timestamps; no borra estrategias automáticamente.
+
+Salida JSON del incubador:
+- `agent`, `mode`, `timestamp`
+- `evaluated_strategies`
+- `promoted`, `frozen`, `rejected`
+- `warnings`
+- `summary` con totales
+
+Interpretación rápida:
+- `promoted` creciente con drawdown controlado => edge potencial.
+- `frozen` recurrente => revisar régimen/parametrización.
+- `rejected` => sacar de la incubadora activa y re-diseñar antes de reintroducir.
+
 ## Evitar overfitting
 
 - No optimizar parámetros en un único tramo temporal.
@@ -106,3 +148,63 @@ Interpretación rápida:
 - Solo paper trading.
 - No ejecución de dinero real.
 - No cambios en claves privadas ni credenciales.
+
+## Activación/Desactivación
+
+- Activo solo con `ENABLE_CRYPTO_STRATEGIES=1`.
+- Integrado en `scripts/run_pipeline.sh` después de señales crypto + scorecard.
+- Falla controlada: `python3 agents/crypto_strategy_incubator_agent.py --json || echo "WARN crypto_strategy_incubator_agent failed"`.
+
+## Disk Cleanup And Generated Files Policy
+
+No versionar artefactos regenerables o runtime:
+- `target/`
+- `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.cache/`
+- `*.log`, `*.tmp`
+- `runtime/`, `tmp/`
+- snapshots y data runtime de `var/`
+- `scripts/dashboard/data.json` (snapshot operativo)
+
+Mantener versionados solo ejemplos/base reproducible:
+- `scripts/dashboard/data.example.json`
+- `data/crypto_strategy_registry.example.json`
+
+## Darwinian Strategy Incubator
+
+El incubador evalúa estrategias en modo selección natural y solo opera en `paper_shadow_only`.
+No ejecuta dinero real ni interrumpe el pipeline por faltas de datos.
+
+Estados de estrategia:
+- `candidate`: todavía sin muestra mínima para shadow.
+- `shadow`: estrategia en observación con señales suficientes pero sin promoción.
+- `promoted`: cumple umbrales de promoción medibles.
+- `frozen`: congelada por drawdown o ventanas negativas.
+- `rejected`: descartada por fallos repetidos.
+
+Reglas de promoción/congelación/rechazo (configurables en `config/crypto_strategy_incubator.yaml`):
+- Promoción: `signals >= 100`, `expectancy >= 0.0`, `profit_factor >= 1.2`, `confidence >= 0.60`, `max_drawdown <= 0.15`.
+- Shadow mínimo: `signals >= 20`.
+- Freeze: `max_drawdown > 0.15` o `negative_windows >= 3`.
+- Reject: `failed_runs >= 5`.
+
+Archivos:
+- Config: `config/crypto_strategy_incubator.yaml`
+- Agente: `agents/crypto_strategy_incubator_agent.py`
+- Registry ejemplo versionado: `data/crypto_strategy_registry.example.json`
+- Registry runtime no versionado: `runtime/crypto_strategy_registry.json`
+
+Ejecución en pipeline:
+- Se activa solo con `ENABLE_CRYPTO_STRATEGIES=1`.
+- Orden: agentes crypto -> scorecard -> incubador.
+- Comando directo: `python3 agents/crypto_strategy_incubator_agent.py --json`
+
+Interpretación del informe JSON:
+- `evaluated_strategies`: detalle por estrategia y métricas usadas.
+- `promoted`, `frozen`, `rejected`: listas de estrategia por estado.
+- `warnings`: datos faltantes o archivos ausentes (sin romper ejecución).
+- `summary`: recuento total y por estado final.
+
+Política de limpieza de disco y generados:
+- Archivos runtime/caches no se versionan (`runtime/`, `target/`, `__pycache__/`, `*.tmp`, `*.log`).
+- `scripts/dashboard/data.json` es snapshot operativo local y se mantiene fuera de git.
+- Mantener ejemplos versionables (`*.example.json`) para bootstrap reproducible.
