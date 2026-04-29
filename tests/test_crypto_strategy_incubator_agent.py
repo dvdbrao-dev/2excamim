@@ -319,4 +319,36 @@ def test_json_stable_shape(tmp_path: Path, monkeypatch, capsys) -> None:
         "warnings",
         "summary",
     }
+
+
+def test_no_missing_scorecard_warning_when_file_exists(tmp_path: Path, monkeypatch, capsys) -> None:
+    cfg = tmp_path / "cfg.yaml"
+    reg = tmp_path / "registry.json"
+    score = tmp_path / "score.json"
+    store = tmp_path / "events.jsonl"
+
+    _config(cfg)
+    _write_json(reg, _registry("s_ok"))
+    _write_json(score, {"strategies": [{"strategy_id": "s_ok", "signals_generated": 25}]})
+    _write_events(store, "s_ok", 25)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "crypto_strategy_incubator_agent.py",
+            "--json",
+            "--config",
+            str(cfg),
+            "--registry",
+            str(reg),
+            "--scorecard",
+            str(score),
+            "--store",
+            str(store),
+        ],
+    )
+
+    assert agent.main() == 0
+    out = json.loads(capsys.readouterr().out)
+    assert all(not warning.startswith("missing_file:") for warning in out["warnings"])
     assert set(out["summary"].keys()) == {"total", "promoted", "frozen", "rejected"}

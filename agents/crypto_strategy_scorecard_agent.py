@@ -11,6 +11,7 @@ from agents.core.event_store import load_jsonl
 
 AGENT_ID = "crypto-strategy-scorecard-agent-v1"
 DEFAULT_STORE = Path("./var/events.jsonl")
+DEFAULT_SCORECARD_PATH = Path("./runtime/crypto_strategy_scorecard.json")
 
 
 @dataclass
@@ -121,6 +122,8 @@ def main() -> int:
         )
 
     output = {"actor": AGENT_ID, "strategies": rows, "store": str(args.store)}
+    DEFAULT_SCORECARD_PATH.parent.mkdir(parents=True, exist_ok=True)
+    DEFAULT_SCORECARD_PATH.write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")
     if args.json:
         print(json.dumps(output, separators=(",", ":")))
     else:
