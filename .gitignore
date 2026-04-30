@@ -38,6 +38,11 @@ research_prediction_markets/output/signals/latest_signals.parquet
 
 var/
 
+# Pipeline runtime state (covered by var/ above, listed explicitly for clarity)
+var/.kill_switch
+var/.failures/
+var/.idempotency_index.json
+
 # Data files - no subir a git
 var/market-watch/raw/
 var/market-watch/snapshots.jsonl
