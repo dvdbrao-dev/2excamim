@@ -2,30 +2,33 @@
 """Confirmation Agent v1.
 
 Reads the local JSONL store, evaluates generated signals against independent
-market-quality checks, and persists confirmations via the runtime CLI contract.
+market-quality checks, and persists confirmations directly as idempotent
+signal.confirmed events in the JSONL store (no external cargo subprocess).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from core.event_store import (
+    append_event_idempotent,
     default_checkpoint_path,
     load_checkpoint,
     read_jsonl_since,
     save_checkpoint,
 )
 from core.logging import emit_json
-from core.time import execution_run_id
+from core.time import execution_run_id, utc_now_rfc3339
 
 
 AGENT_ID = "confirmation-agent-v1"
+PRODUCED_BY = "runtime.agent.confirmation"
 DEFAULT_STORE = Path("./var/events.jsonl")
 DEFAULT_THRESHOLD = 0.6
 DEFAULT_MIN_MARKET_SCORE = 0.2
@@ -93,11 +96,6 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_REQUIRED_POSITIVE_CHECKS,
         help="Minimum number of independent positive checks required to confirm.",
-    )
-    parser.add_argument(
-        "--cargo-bin",
-        default="cargo",
-        help="Binary used to invoke the Rust runtime CLI.",
     )
     parser.add_argument(
         "--checkpoint",
@@ -285,56 +283,65 @@ def checkpoint_path_from_args(args: argparse.Namespace, store_path: Path) -> Pat
     return default_checkpoint_path(store_path, AGENT_ID)
 
 
-def confirm_via_cli(
+def confirm_via_jsonl(
     store_path: Path,
     candidate: SignalCandidate,
-    cargo_bin: str,
+    run_id: str,
+    threshold: float,
     confirmation_reasons: list[str],
     rejection_reasons: list[str],
 ) -> tuple[bool, dict[str, Any] | None]:
-    command = [
-        cargo_bin,
-        "run",
-        "--",
-        "confirm",
-        "signal",
-        candidate.signal_id,
-        "--confirmed-by",
-        AGENT_ID,
-        "--confirmation-reasons-json",
-        json.dumps(confirmation_reasons, separators=(",", ":")),
-        "--rejection-reasons-json",
-        json.dumps(rejection_reasons, separators=(",", ":")),
-        "--store",
-        str(store_path),
-    ]
+    """Write a signal.confirmed event directly to the JSONL store."""
+    signal_id = candidate.signal_id
+    idempotency_key = f"signal.confirmed:v1:{signal_id}:{AGENT_ID}"
+
+    event: dict[str, Any] = {
+        "event_id": str(uuid.uuid4()),
+        "event_type": "signal.confirmed",
+        "schema_version": "v1",
+        "occurred_at": utc_now_rfc3339(),
+        "produced_by": PRODUCED_BY,
+        "idempotency_key": idempotency_key,
+        "aggregate_key": candidate.aggregate_key,
+        "linkage": {
+            "hypothesis_id": candidate.hypothesis_id,
+            "signal_id": signal_id,
+            "decision_id": None,
+            "order_id": None,
+            "position_id": None,
+            "parent_event_id": candidate.parent_event_id,
+            "correlation_id": candidate.correlation_id or signal_id,
+        },
+        "provenance": {
+            "source_kind": "Runtime",
+            "source_ref": None,
+            "producer_run_id": run_id,
+            "actor": AGENT_ID,
+            "trace_id": f"{run_id}:{signal_id}",
+            "notes": (
+                f"auto-confirmed strength={candidate.strength:.6f} threshold={threshold:.6f}"
+            ),
+        },
+        "payload": {
+            "signal_id": signal_id,
+            "confirmed_by": AGENT_ID,
+            "confirmation_reasons": confirmation_reasons,
+            "rejection_reasons": rejection_reasons,
+            "confirmation_score": round(candidate.strength, 6),
+            "estimated_probability": round(candidate.strength, 6),
+        },
+    }
+
     try:
-        result = subprocess.run(
-            command,
-            cwd=Path(__file__).resolve().parents[1],
-            capture_output=True,
-            text=True,
-        )
-    except OSError as error:
+        append_event_idempotent(store_path, event)
+        return True, None
+    except Exception as error:
         return False, {
-            "signal_id": candidate.signal_id,
+            "signal_id": signal_id,
             "signal_kind": candidate.signal_kind,
-            "command": command,
             "error_type": error.__class__.__name__,
             "error_message": str(error),
         }
-
-    if result.returncode == 0:
-        return True, None
-
-    return False, {
-        "signal_id": candidate.signal_id,
-        "signal_kind": candidate.signal_kind,
-        "command": command,
-        "returncode": result.returncode,
-        "stdout": result.stdout.strip(),
-        "stderr": result.stderr.strip(),
-    }
 
 
 def evaluate_market_candidate(
@@ -392,8 +399,6 @@ def evaluate_market_candidate(
             rejection_reasons.append("hours_to_resolution missing")
 
     confirmed = len(confirmation_reasons) >= args.required_positive_checks
-    # hours_to_resolution es un check obligatorio —
-    # si falla, la señal no puede confirmarse
     hours_failed = any(
         "hours_to_resolution" in r and "outside" in r
         for r in rejection_reasons
@@ -446,13 +451,14 @@ def main() -> int:
     ]
     already_confirmed = len(market_candidates) - len(to_evaluate)
 
-    cli_successes = 0
+    jsonl_successes = 0
     unsupported_kinds = len(crypto_candidates)
     rejected = 0
     blocked_by_missing_market_score = 0
     persistence_failures: list[dict[str, Any]] = []
     confirmation_samples: list[dict[str, Any]] = []
     rejection_samples: list[dict[str, Any]] = []
+
     for candidate in to_evaluate:
         market_id = candidate.market_id or normalized_market_key(candidate.aggregate_key)
         market_info = scored_markets.get(market_id) if isinstance(market_id, str) else None
@@ -474,15 +480,16 @@ def main() -> int:
             )
             continue
 
-        success, error = confirm_via_cli(
+        success, error = confirm_via_jsonl(
             store_path,
             candidate,
-            args.cargo_bin,
+            run_id,
+            args.threshold,
             confirmation_reasons,
             rejection_reasons,
         )
         if success:
-            cli_successes += 1
+            jsonl_successes += 1
             confirmation_samples.append(
                 {
                     "signal_id": candidate.signal_id,
@@ -525,7 +532,7 @@ def main() -> int:
             "crypto_candidates": len(crypto_candidates),
             "already_confirmed": already_confirmed,
             "rejected_candidates": rejected,
-            "confirmed_via_cli": cli_successes,
+            "confirmed_via_jsonl": jsonl_successes,
             "unsupported_kind_skipped": unsupported_kinds,
             "persistence_failures": len(persistence_failures),
             "persistence_error_sample": persistence_failures[0] if persistence_failures else None,
@@ -536,7 +543,7 @@ def main() -> int:
             "checkpoint_offset": offset,
             "next_checkpoint_offset": safe_next_offset,
             "full_replay": bool(args.full_replay),
-            "total_confirmed_this_run": cli_successes,
+            "total_confirmed_this_run": jsonl_successes,
         }
     )
     return 0
