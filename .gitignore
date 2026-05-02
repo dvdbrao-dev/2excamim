@@ -46,6 +46,9 @@ var/.idempotency_index.json
 # OHLCV historical data cache
 data/ohlcv/
 
+# Strategy governance history (runtime state, not versioned)
+runtime/strategy_governance_history.jsonl
+
 # Data files - no subir a git
 var/market-watch/raw/
 var/market-watch/snapshots.jsonl

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -9,17 +10,29 @@ from pathlib import Path
 from typing import Any
 
 from agents.core.event_store import load_jsonl
+from agents.core.governance import (
+    GovernanceConfig as _GovConfig,
+    StrategyMetrics as _Metrics,
+    append_transition,
+    evaluate_transition,
+)
 
 DEFAULT_CONFIG = Path("./config/crypto_strategy_incubator.yaml")
 DEFAULT_STORE = Path("./var/events.jsonl")
 DEFAULT_REGISTRY = Path("./runtime/crypto_strategy_registry.json")
 DEFAULT_SCORECARD = Path("./runtime/crypto_strategy_scorecard.json")
+DEFAULT_GOVERNANCE_HISTORY = Path("./runtime/strategy_governance_history.jsonl")
+
+_REQUIRED_SCORECARD_FIELDS = frozenset(
+    {"expectancy", "profit_factor", "max_drawdown", "confidence", "negative_windows", "failed_runs"}
+)
 
 
 @dataclass(frozen=True)
 class IncubatorConfig:
     min_signals_for_shadow: int = 20
     min_signals_for_promotion: int = 100
+    min_fills_for_promotion: int = 30
     min_expectancy_for_promotion: float = 0.0
     min_profit_factor_for_promotion: float = 1.2
     max_drawdown_allowed: float = 0.15
@@ -85,6 +98,7 @@ def load_incubator_config(path: Path) -> IncubatorConfig:
     return IncubatorConfig(
         min_signals_for_shadow=_as_int(raw.get("min_signals_for_shadow")) or 20,
         min_signals_for_promotion=_as_int(raw.get("min_signals_for_promotion")) or 100,
+        min_fills_for_promotion=_as_int(raw.get("min_fills_for_promotion")) or 30,
         min_expectancy_for_promotion=_as_float(raw.get("min_expectancy_for_promotion")) or 0.0,
         min_profit_factor_for_promotion=_as_float(raw.get("min_profit_factor_for_promotion")) or 1.2,
         max_drawdown_allowed=_as_float(raw.get("max_drawdown_allowed")) or 0.15,
@@ -160,78 +174,72 @@ def infer_signal_counts(store_path: Path) -> tuple[dict[str, int], str | None]:
     return counts, None
 
 
+def _to_gov_config(config: IncubatorConfig) -> _GovConfig:
+    return _GovConfig(
+        min_signals_for_shadow=config.min_signals_for_shadow,
+        min_signals_for_promotion=config.min_signals_for_promotion,
+        min_fills_for_promotion=config.min_fills_for_promotion,
+        min_profit_factor_for_promotion=config.min_profit_factor_for_promotion,
+        max_drawdown_allowed=config.max_drawdown_allowed,
+        min_confidence_for_promotion=config.min_confidence_for_promotion,
+        min_expectancy_for_promotion=config.min_expectancy_for_promotion,
+        freeze_after_negative_windows=config.freeze_after_negative_windows,
+        reject_after_failed_runs=config.reject_after_failed_runs,
+    )
+
+
+def _build_metrics(score: dict[str, Any], signal_count_fallback: int) -> _Metrics:
+    signals = _as_int(score.get("signals_generated"))
+    return _Metrics(
+        signals_generated=signals if signals is not None else signal_count_fallback,
+        fills=_as_int(score.get("fills")),
+        expectancy=_as_float(score.get("expectancy")),
+        profit_factor=_as_float(score.get("profit_factor")),
+        max_drawdown=_as_float(score.get("max_drawdown")),
+        confidence=_as_float(score.get("confidence")),
+        negative_windows=_as_int(score.get("negative_windows")),
+        failed_runs=_as_int(score.get("failed_runs")),
+    )
+
+
 def evaluate_status(
     strategy_id: str,
     registry_row: dict[str, Any],
     score: dict[str, Any],
     signal_count_fallback: int,
     config: IncubatorConfig,
-) -> tuple[str, dict[str, Any], str | None]:
-    signals = _as_int(score.get("signals_generated"))
-    if signals is None:
-        signals = signal_count_fallback
+) -> tuple[str, dict[str, Any], str | None, str]:
+    current_state = registry_row.get("status", "candidate")
+    metrics = _build_metrics(score, signal_count_fallback)
+    gov_config = _to_gov_config(config)
+    new_state, transition_reason = evaluate_transition(current_state, metrics, gov_config)
 
-    expectancy = _as_float(score.get("expectancy"))
-    profit_factor = _as_float(score.get("profit_factor"))
-    max_drawdown = _as_float(score.get("max_drawdown"))
-    confidence = _as_float(score.get("confidence"))
-    negative_windows = _as_int(score.get("negative_windows"))
-    failed_runs = _as_int(score.get("failed_runs"))
+    # Warn only when required keys are literally absent from the score dict
+    missing_keys = _REQUIRED_SCORECARD_FIELDS - score.keys()
+    warning = (
+        f"incomplete_metrics:{strategy_id}:{','.join(sorted(missing_keys))}"
+        if missing_keys
+        else None
+    )
 
     freeze_count = _as_int(registry_row.get("freeze_count")) or 0
     promotion_count = _as_int(registry_row.get("promotion_count")) or 0
 
-    warning: str | None = None
-
-    if failed_runs is not None and failed_runs >= config.reject_after_failed_runs:
-        status = "rejected"
-    elif max_drawdown is not None and max_drawdown > config.max_drawdown_allowed:
-        status = "frozen"
-    elif negative_windows is not None and negative_windows >= config.freeze_after_negative_windows:
-        status = "frozen"
-    elif (
-        signals >= config.min_signals_for_promotion
-        and expectancy is not None
-        and expectancy >= config.min_expectancy_for_promotion
-        and profit_factor is not None
-        and profit_factor >= config.min_profit_factor_for_promotion
-        and confidence is not None
-        and confidence >= config.min_confidence_for_promotion
-        and (max_drawdown is None or max_drawdown <= config.max_drawdown_allowed)
-    ):
-        status = "promoted"
-    elif signals >= config.min_signals_for_shadow:
-        status = "shadow"
-    else:
-        status = "candidate"
-
-    if (
-        expectancy is None
-        or profit_factor is None
-        or confidence is None
-        or max_drawdown is None
-        or negative_windows is None
-        or failed_runs is None
-    ):
-        warning = f"incomplete_metrics:{strategy_id}"
-
     updated = {
         "strategy_id": strategy_id,
         "agent_file": registry_row.get("agent_file"),
-        "status": status,
+        "status": new_state,
         "created_at": registry_row.get("created_at"),
         "last_evaluated_at": utc_now_rfc3339(),
-        "promotion_count": promotion_count + (1 if status == "promoted" else 0),
-        "freeze_count": freeze_count + (1 if status == "frozen" else 0),
+        "promotion_count": promotion_count + (1 if new_state == "promoted" and current_state != "promoted" else 0),
+        "freeze_count": freeze_count + (1 if new_state == "frozen" and current_state != "frozen" else 0),
         "rejection_reason": (
-            "failed_runs_threshold"
-            if status == "rejected"
-            else registry_row.get("rejection_reason")
+            transition_reason if new_state == "rejected" else registry_row.get("rejection_reason")
         ),
         "notes": registry_row.get("notes"),
     }
 
-    return status, updated, warning
+    return new_state, updated, warning, transition_reason
 
 
 def main() -> int:
@@ -244,6 +252,8 @@ def main() -> int:
     fallback_signals, store_warning = infer_signal_counts(Path(args.store))
     if store_warning:
         warnings.append(store_warning)
+
+    governance_history_path = DEFAULT_GOVERNANCE_HISTORY
 
     if not registry_rows and scorecards:
         for strategy_id in sorted(scorecards):
@@ -273,14 +283,27 @@ def main() -> int:
             warnings.append("invalid_registry_row_missing_strategy_id")
             continue
 
+        from_state = row.get("status", "candidate")
         score = scorecards.get(strategy_id, {})
-        status, updated, warning = evaluate_status(
+        status, updated, warning, transition_reason = evaluate_status(
             strategy_id,
             row,
             score,
             fallback_signals.get(strategy_id, 0),
             config,
         )
+
+        # Persist governance transition whenever state changes
+        if status != from_state:
+            metrics = _build_metrics(score, fallback_signals.get(strategy_id, 0))
+            append_transition(
+                governance_history_path,
+                strategy_id,
+                from_state,
+                status,
+                transition_reason,
+                dataclasses.asdict(metrics),
+            )
 
         signal_count = _as_int(score.get("signals_generated")) or fallback_signals.get(strategy_id, 0)
         evaluated_strategies.append(
