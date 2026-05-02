@@ -60,3 +60,6 @@ agents/__pycache__/
 *.pyc
 
 research_prediction_markets/output/signals/latest_signals.parquet
+
+# OpenFang bridge runtime state
+runtime/openfang_state.json
