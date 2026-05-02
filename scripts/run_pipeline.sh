@@ -58,12 +58,11 @@ run_agent() {
 }
 
 # ---------------------------------------------------------------------------
-# Market-watch Rust runtime — hard dependency; pipeline aborts if this fails
-# ---------------------------------------------------------------------------
-timeout 60 cargo run -p market-watch -- --state-dir ./var/market-watch
-
-# ---------------------------------------------------------------------------
 # Crypto strategy agents (opt-in via ENABLE_CRYPTO_STRATEGIES=1)
+# These agents only need events.jsonl + crypto_ohlcv — no market-watch dep.
+# Running before the market-watch hard dependency ensures the OpenFang bridge
+# always sees up-to-date registry/scorecard data regardless of whether the
+# Rust runtime completes.
 # ---------------------------------------------------------------------------
 if [[ "${ENABLE_CRYPTO_STRATEGIES:-0}" == "1" ]]; then
     run_agent "crypto_adx_ema_pullback" \
@@ -81,6 +80,25 @@ if [[ "${ENABLE_CRYPTO_STRATEGIES:-0}" == "1" ]]; then
     run_agent "crypto_strategy_incubator" \
         python3 agents/crypto_strategy_incubator_agent.py --json
 fi
+
+# ---------------------------------------------------------------------------
+# OpenFang bridge — read-only state export (never aborts pipeline).
+# Placed here so it always runs with the freshest registry/scorecard data
+# and before the market-watch hard dependency that could abort the pipeline.
+# Falls back to files from the previous run when ENABLE_CRYPTO_STRATEGIES=0.
+# ---------------------------------------------------------------------------
+python3 agents/openfang_bridge.py \
+    --registry ./runtime/crypto_strategy_registry.json \
+    --scorecard ./runtime/crypto_strategy_scorecard.json \
+    --kill-switch ./var/.kill_switch \
+    --output ./runtime/openfang_state.json \
+    || echo "[pipeline] WARN: openfang_bridge failed, continuing"
+
+# ---------------------------------------------------------------------------
+# Market-watch Rust runtime — hard dependency; pipeline aborts if this fails.
+# Core agents below require ./var/market-watch snapshots.
+# ---------------------------------------------------------------------------
+timeout 60 cargo run -p market-watch -- --state-dir ./var/market-watch
 
 # ---------------------------------------------------------------------------
 # Core pipeline agents
@@ -119,13 +137,3 @@ run_agent "telegram" \
 
 # Live Gateway — descomentar post-migración V2
 # run_agent "live_gateway" python3 agents/live_gateway.py --store ./var/events.jsonl
-
-# ---------------------------------------------------------------------------
-# OpenFang bridge — read-only state export (never aborts pipeline)
-# ---------------------------------------------------------------------------
-python3 agents/openfang_bridge.py \
-    --registry ./runtime/crypto_strategy_registry.json \
-    --scorecard ./runtime/crypto_strategy_scorecard.json \
-    --kill-switch ./var/.kill_switch \
-    --output ./runtime/openfang_state.json \
-    || echo "[pipeline] WARN: openfang_bridge failed, continuing"

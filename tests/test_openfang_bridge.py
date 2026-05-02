@@ -207,3 +207,29 @@ def test_bridge_post_skipped_when_url_unset(tmp_path: Path, monkeypatch: pytest.
     assert rc == 0
     assert output.exists()
     mock_urlopen.assert_not_called()
+
+
+def test_pipeline_runs_bridge_before_cargo() -> None:
+    """Regression: openfang_bridge must appear before 'cargo run' in run_pipeline.sh.
+
+    If 'cargo run' times out or fails, the pipeline aborts (set -euo pipefail).
+    The bridge must therefore be positioned before that hard dependency.
+    """
+    script = (ROOT / "scripts" / "run_pipeline.sh").read_text(encoding="utf-8")
+    lines = script.splitlines()
+
+    bridge_line = next(
+        (i for i, l in enumerate(lines) if "openfang_bridge.py" in l and not l.strip().startswith("#")),
+        None,
+    )
+    cargo_line = next(
+        (i for i, l in enumerate(lines) if "cargo run" in l and not l.strip().startswith("#")),
+        None,
+    )
+
+    assert bridge_line is not None, "openfang_bridge.py call not found in run_pipeline.sh"
+    assert cargo_line is not None, "'cargo run' not found in run_pipeline.sh"
+    assert bridge_line < cargo_line, (
+        f"openfang_bridge (line {bridge_line + 1}) must come before "
+        f"'cargo run' (line {cargo_line + 1}) — see fix: run OpenFang bridge before blocking pipeline phase"
+    )
