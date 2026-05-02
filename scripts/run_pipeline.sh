@@ -120,5 +120,12 @@ run_agent "telegram" \
 # Live Gateway — descomentar post-migración V2
 # run_agent "live_gateway" python3 agents/live_gateway.py --store ./var/events.jsonl
 
-# OpenFang read-only bridge: best-effort, never abort pipeline
-python3 agents/openfang_bridge.py || echo "WARN: openfang_bridge failed"
+# ---------------------------------------------------------------------------
+# OpenFang bridge — read-only state export (never aborts pipeline)
+# ---------------------------------------------------------------------------
+python3 agents/openfang_bridge.py \
+    --registry ./runtime/crypto_strategy_registry.json \
+    --scorecard ./runtime/crypto_strategy_scorecard.json \
+    --kill-switch ./var/.kill_switch \
+    --output ./runtime/openfang_state.json \
+    || echo "[pipeline] WARN: openfang_bridge failed, continuing"
