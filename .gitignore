@@ -63,3 +63,10 @@ research_prediction_markets/output/signals/latest_signals.parquet
 
 # OpenFang bridge runtime state
 runtime/openfang_state.json
+
+# Edge validation reports (full reports gitignored; summaries committed manually)
+reports/edge_validation_*.md
+reports/edge_validation_*.json
+
+# Polymarket market resolution cache
+var/polymarket_cache/
