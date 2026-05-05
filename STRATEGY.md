@@ -30,11 +30,29 @@ lado NO de estos mercados cobra el spread sin necesitar forecasting.
 - Live gateway (sigue diferido)
 - Kelly sizing (hasta tener fills reales)
 
+## Estado de validación del edge maker
+
+**Hipótesis aún no probada con datos históricos.**
+
+El modelo conservador de fills (ver `scripts/maker_fill_simulator.py`) y el
+backtester (`scripts/maker_backtester.py`) están implementados con thresholds
+pre-commiteados. La validación requiere ingestar histórico real:
+
+```bash
+python3 agents/services/polymarket_orderbook_history.py --output-dir data/orderbook
+python3 scripts/maker_backtester.py --data-dir data/orderbook --output-json reports/maker_backtest.json
+```
+
+Veredicto actual: **PENDIENTE** (no hay datos `data/orderbook/` suficientes).
+Ver `docs/MAKER_STRATEGY_VALIDATION.md` para el protocolo completo.
+
+Si el backtester retorna FAIL, esta sección se actualizará:
+> "La pivot maker no se valida con datos disponibles. Queda como hipótesis no probada."
+
 ## Próximas validaciones pendientes
-1. Análisis histórico: dado midpoint_NO >= 0.85, tasa real de resolución NO
-   API: https://gamma-api.polymarket.com/markets?closed=true&active=false
+1. Ejecutar ingesta histórica y backtester maker (ver arriba)
 2. Medir decisiones formadas con nueva configuración tras 24h de pipeline
-3. Activar fills paper reales cuando decisiones > 20/día
+3. Activar fills paper reales cuando decisiones > 20/día y backtester PASS
 
 ## Migración V2
 
