@@ -135,5 +135,19 @@ run_agent "telegram" \
     python3 agents/telegram_agent.py \
         --store ./var/events.jsonl
 
+# ---------------------------------------------------------------------------
+# Shadow live — simulate realistic fills for every decision.formed
+# ---------------------------------------------------------------------------
+run_agent "shadow_live" \
+    python3 agents/shadow_live_agent.py \
+        --store ./var/events.jsonl --watch-dir ./var/market-watch
+
+# ---------------------------------------------------------------------------
+# Drawdown guard — circuit breaker; may touch var/.kill_switch
+# ---------------------------------------------------------------------------
+run_agent "drawdown_guard" \
+    python3 agents/drawdown_guard.py \
+        --store ./var/events.jsonl
+
 # Live Gateway — descomentar post-migración V2
 # run_agent "live_gateway" python3 agents/live_gateway.py --store ./var/events.jsonl
