@@ -1,0 +1,23 @@
+# Edge validation kill criteria — pre-committed before gauntlet runs.
+# Modifying this file requires an explicit PR with justification.
+# Do not change thresholds based on observed results (p-hacking).
+schema_version: "v1"
+
+llm_calibration:
+  min_resolved_markets: 30
+  # LLM must beat midpoint in Brier by at least 5%
+  min_relative_improvement_brier: 0.05
+
+strategy_walkforward:
+  min_pf_oos_window: 1.2
+  min_pf_pass_rate: 0.60      # 60% of windows with PF >= 1.2
+  min_sharpe_like: 0.5
+  max_dd_worst_window: 0.15
+
+bootstrap_significance:
+  n_iterations: 1000
+  min_t_stat: 1.5
+  kill_t_stat: 1.0
+
+correlation_cap:
+  max_pairwise_rho: 0.6        # if > 0.6 → consolidate
