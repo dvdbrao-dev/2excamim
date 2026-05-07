@@ -2,20 +2,11 @@ from __future__ import annotations
 
 import json
 from argparse import Namespace
+from collections import deque
 from pathlib import Path
 
 from agents.core.event_store import load_jsonl
-from agents.research_collector_candidate import (
-    OrderBookSnapshot,
-    OrderLevel,
-    best_ask,
-    best_bid,
-    mid_price,
-    oracle_spot_delta_bps,
-    orderbook_imbalance_top_n,
-    run,
-    spread_bps,
-)
+from agents.research_collector_candidate import oracle_spot_delta_bps, run, spot_delta_bps
 
 
 def _write_slots(path: Path) -> None:
@@ -38,17 +29,7 @@ def _write_slots(path: Path) -> None:
 
 
 def test_feature_helpers_calculate_correctly() -> None:
-    book = OrderBookSnapshot(
-        bids=[OrderLevel(price=0.47, size=100), OrderLevel(price=0.46, size=50)],
-        asks=[OrderLevel(price=0.49, size=80), OrderLevel(price=0.50, size=70)],
-    )
-    bid = best_bid(book)
-    ask = best_ask(book)
-    assert bid == 0.47
-    assert ask == 0.49
-    assert mid_price(bid, ask) == 0.48
-    assert round(spread_bps(bid, ask) or 0.0, 2) == 416.67
-    assert round(orderbook_imbalance_top_n(book, 2) or 0.0, 5) == 0.0
+    assert round((spot_delta_bps(deque([100.0, 101.0])) or 0.0), 2) == 100.0
     assert round(oracle_spot_delta_bps(101.0, 100.0) or 0.0, 2) == 100.0
 
 
@@ -65,13 +46,24 @@ def test_mock_collector_emits_valid_jsonl(tmp_path: Path) -> None:
         sample_count=2,
         sample_interval_ms=1000,
         dry_run=False,
-        mock=True,
+        mock=False,
+        data_mode="mock",
+        network_timeout_sec=5.0,
+        max_retries=2,
+        fail_soft=False,
+        polymarket_metadata_enabled=False,
+        polymarket_orderbook_enabled=False,
     )
     summary = run(args)
     assert summary["events_persisted"] >= 2
 
     rows = load_jsonl(out)
-    assert any(row.get("event_type") == "market_snapshot.observed" for row in rows)
+    snapshots = [row for row in rows if row.get("event_type") == "market_snapshot.observed"]
+    health = [row for row in rows if row.get("event_type") == "feed_health.checked"][-1]["payload"]
+    assert snapshots
+    assert snapshots[0]["payload"]["source_quality"] == "mock"
+    assert health["ok"] is True
+    assert health["partial"] is False
 
 
 def test_missing_data_emits_data_gap_detected(tmp_path: Path) -> None:
@@ -85,6 +77,12 @@ def test_missing_data_emits_data_gap_detected(tmp_path: Path) -> None:
         sample_interval_ms=1000,
         dry_run=False,
         mock=False,
+        data_mode="read_only",
+        network_timeout_sec=0.01,
+        max_retries=0,
+        fail_soft=True,
+        polymarket_metadata_enabled=True,
+        polymarket_orderbook_enabled=False,
     )
     run(args)
     rows = load_jsonl(out)
@@ -104,7 +102,13 @@ def test_event_idempotency_stable(tmp_path: Path) -> None:
         sample_count=1,
         sample_interval_ms=1000,
         dry_run=False,
-        mock=True,
+        mock=False,
+        data_mode="mock",
+        network_timeout_sec=5.0,
+        max_retries=2,
+        fail_soft=False,
+        polymarket_metadata_enabled=False,
+        polymarket_orderbook_enabled=False,
     )
     run(args)
     first = load_jsonl(out)
@@ -126,7 +130,13 @@ def test_dry_run_behavior(tmp_path: Path) -> None:
         sample_count=1,
         sample_interval_ms=1000,
         dry_run=True,
-        mock=True,
+        mock=False,
+        data_mode="mock",
+        network_timeout_sec=5.0,
+        max_retries=2,
+        fail_soft=False,
+        polymarket_metadata_enabled=False,
+        polymarket_orderbook_enabled=False,
     )
     summary = run(args)
     assert summary["events_generated"] >= 1
