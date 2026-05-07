@@ -2,6 +2,21 @@
 
 ## 2026-05-07
 
+### feat: add offline backtest harness for external candidates
+- Added `agents/backtest_external_candidate.py` for deterministic offline replay of external-candidate data.
+- Emits:
+  - `backtest.run_started`
+  - `candidate_signal.scored`
+  - `shadow_fill.simulated`
+  - `strategy_round.scored`
+  - `candidate_strategy.evaluated`
+  - `backtest.run_completed`
+- Added markdown report generation and standalone backtest event log.
+- Added tests `tests/test_backtest_external_candidate.py`.
+- Added docs `docs/backtesting/external_candidate_backtest.md`.
+- Added launcher `scripts/run_external_candidate_backtest.sh`.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md`.
+
 ### feat: add external candidate scorecard governance
 - Added `agents/external_candidate_scorecard.py` to aggregate external candidate metrics and evaluate governance state.
 - Emits `candidate_strategy.evaluated`.

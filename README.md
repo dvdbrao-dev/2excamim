@@ -101,6 +101,14 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Regla de seguridad: no auto-promoción por defecto (solo sugerencia de promoción).
 - Operación opcional: `bash scripts/run_external_candidate_scorecard.sh`.
 
+### Offline Backtest Harness (Phase 5)
+- Agente: `agents/backtest_external_candidate.py`
+- Rol: replay offline determinista de snapshots/candidatos para `oracle_lag_v1`.
+- Salidas:
+  - `var/events/external_backtest.jsonl`
+  - `reports/external_candidates/oracle_lag_v1_backtest.md`
+- Operación opcional: `bash scripts/run_external_candidate_backtest.sh`.
+
 ## Arranque rápido
 ```bash
 bash scripts/run_pipeline.sh

@@ -152,9 +152,15 @@ execution and must remain within paper/shadow governance boundaries.
 - governance outputs:
   - `status` (effective)
   - `suggested_status` (advisory)
-  - `auto_promoted` (always `false` by default)
-  - `reason`
-  - `thresholds` snapshot
+- `auto_promoted` (always `false` by default)
+- `reason`
+- `thresholds` snapshot
+
+Backtest harness event types:
+- `backtest.run_started`
+- `backtest.run_completed`
+
+Backtest events are offline replay artifacts and must never trigger live execution paths.
 
 ### Derived readiness semantics
 

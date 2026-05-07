@@ -357,6 +357,7 @@ Estado: planificado (candidate/shadow-first, sin implementación de agentes en e
 - Consolidar harness offline para replay/backtest de candidatos externos.
 - Reusar pipeline y gobernanza actual (candidate/promoted/frozen/rejected).
 - Mantener reproducibilidad e idempotencia como requisito central.
+- Estado: en progreso (`agents/backtest_external_candidate.py` + reporte markdown + event log de backtest).
 
 ### Phase 6: optional cross-venue matcher research
 - Investigación opcional offline de matching Kalshi/Polymarket.
