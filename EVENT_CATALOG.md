@@ -90,6 +90,17 @@ Allowed `event_type` values for the initial external-candidate program:
 These are candidate/shadow/research-oriented signals and observations. They do not imply live
 execution and must remain within paper/shadow governance boundaries.
 
+`market_slot.discovered` candidate payload conventions:
+- `asset` (`BTC|ETH|SOL` in v1 scope)
+- `window` (`5m|15m` in v1 scope)
+- `slot_start` (UTC ISO-8601)
+- `slot_end` (UTC ISO-8601)
+- `candidate_slug` (heuristic candidate string)
+- `confidence` (heuristic confidence, conservative)
+- `discovery_method` (e.g. `deterministic_slug_heuristic_v1`)
+- `confirmed` (boolean; default false when no network confirmation)
+- `source` (`slot_discovery_candidate`)
+
 ### Derived readiness semantics
 
 - Readiness and lifecycle are derived by query-time interpretation of the current event log.

@@ -7,7 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from agents.core.event_store import append_event_idempotent
+try:
+    from core.event_store import append_event_idempotent
+except ModuleNotFoundError:  # pragma: no cover - fallback for package-style imports in tests
+    from agents.core.event_store import append_event_idempotent
 
 # Stable namespace for deterministic UUID5 generation of external-candidate events.
 EVENT_NAMESPACE = uuid.UUID("2d9fdb89-3dc5-4d20-8abd-5ec929852a4d")

@@ -69,6 +69,12 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
   - `data_gap.detected`
   - `feed_health.checked`
 
+### Slot Discovery Candidate (Phase 1)
+- Agente: `agents/market_slot_discovery_candidate.py`
+- Rol: discovery determinista de slots esperados BTC/ETH/SOL en ventanas 5m/15m.
+- Salida: eventos `market_slot.discovered` en `./var/events/external_candidates.jsonl` (por defecto).
+- Operación opcional: `bash scripts/run_slot_discovery_candidate.sh` (no obligatorio en pipeline principal).
+
 ## Arranque rápido
 ```bash
 bash scripts/run_pipeline.sh

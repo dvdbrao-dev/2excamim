@@ -332,6 +332,7 @@ Estado: planificado (candidate/shadow-first, sin implementación de agentes en e
 - Crear candidato de discovery determinista para slots cripto 5m/15m.
 - Base de investigación: patrones de `Polymarket-Market-Finder` sin importar repo completo.
 - Salida prevista: universo de mercados candidato trazable y reproducible.
+- Estado: en progreso (`agents/market_slot_discovery_candidate.py` + script opcional + tests).
 
 ### Phase 2: research snapshot collector
 - Construir collector research-only de snapshots (oracle/spot/orderbook).
