@@ -17,6 +17,16 @@ It only covers the existing event set:
 For external-derived candidate research, this catalog also defines the pre-contract
 event envelope and the initial event-type registry used by Python candidate agents.
 
+External candidate agent references:
+- `docs/agents/slot_discovery_candidate.md`
+- `docs/agents/research_collector_candidate.md`
+- `docs/agents/oracle_lag_signal_candidate.md`
+- `docs/agents/shadow_execution_simulator.md`
+- `docs/agents/external_candidate_scorecard.md`
+- `docs/reports/external_candidate_reports.md`
+- `docs/backtesting/external_candidate_backtest.md`
+- `docs/research/cross_venue_market_matching.md`
+
 ## Cross-Cutting Rules v1
 
 ### Payload vs linkage

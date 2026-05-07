@@ -2,6 +2,11 @@
 
 ## 2026-05-07
 
+### chore: harden external candidate tooling
+- Fixed deterministic staleness evaluation in `agents/oracle_lag_signal_candidate.py` (uses replay/eval timestamp instead of wall clock) to avoid false stale rejections in offline/test workflows.
+- Added cross-links across `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md` for external candidate docs.
+- Added developer guide `docs/development/external_candidate_dev_guide.md` with event envelope, test, docs, no-live policy, and promotion checklist requirements.
+
 ### feat: add research-only cross venue matcher skeleton
 - Added `agents/cross_venue_matcher_candidate.py` for deterministic Polymarket/Kalshi market-match scoring.
 - Added event type `cross_venue.market_match_scored` to external candidate event registry.

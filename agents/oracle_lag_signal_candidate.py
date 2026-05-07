@@ -146,7 +146,15 @@ def reject_reason(
         return "insufficient_snapshots", {}
 
     first, last = rows[0], rows[-1]
-    if (wall_now_ts - last.ts).total_seconds() > DEFAULT_MAX_STALE_SECONDS:
+    # Hybrid staleness:
+    # - deterministic within-replay evaluation
+    # - wall-clock guard for clearly old historical datasets
+    stale_by_eval = (eval_ts - last.ts).total_seconds() > DEFAULT_MAX_STALE_SECONDS
+    stale_by_wall_clock = (
+        wall_now_ts.date() != last.ts.date()
+        and (wall_now_ts - last.ts).total_seconds() > DEFAULT_MAX_STALE_SECONDS
+    )
+    if stale_by_eval or stale_by_wall_clock:
         return "stale_feed", {}
 
     if last.best_bid is None or last.best_ask is None or last.mid_price is None:

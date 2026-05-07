@@ -322,6 +322,19 @@ Estado: intencionalmente diferido.
 
 Estado: planificado (candidate/shadow-first, sin implementación de agentes en esta fase).
 
+Referencias rápidas:
+- Plan: `docs/research/external_edge_candidates_v1.md`
+- ADR: `docs/adr/ADR-externally-derived-edge-candidates-v1.md`
+- Agents docs:
+  - `docs/agents/slot_discovery_candidate.md`
+  - `docs/agents/research_collector_candidate.md`
+  - `docs/agents/oracle_lag_signal_candidate.md`
+  - `docs/agents/shadow_execution_simulator.md`
+  - `docs/agents/external_candidate_scorecard.md`
+  - `docs/reports/external_candidate_reports.md`
+  - `docs/backtesting/external_candidate_backtest.md`
+  - `docs/research/cross_venue_market_matching.md`
+
 ### Phase 0: event contract and docs
 - Formalizar frontera documental para edge externo derivado.
 - Exigir envelope mínimo por evento (`event_type`, `event_id`, `timestamp`, `idempotency_key`, `aggregate_key`, `provenance`, `payload`).
