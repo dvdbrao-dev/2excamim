@@ -2,6 +2,22 @@
 
 ## 2026-05-07
 
+### feat: add read-only market data adapters
+- Added `agents/adapters/` package with:
+  - `binance_spot_adapter.py` (public spot prices BTC/ETH/SOL),
+  - `polymarket_metadata_adapter.py` (public slug metadata lookup),
+  - `polymarket_orderbook_adapter.py` (read-only interface, safe-disabled behavior),
+  - `http_client.py` (timeout + retries + structured errors).
+- Extended `agents/research_collector_candidate.py` with `--data-mode mock|read_only` and adapter controls:
+  - `--network-timeout-sec`, `--max-retries`, `--fail-soft`,
+  - `--polymarket-metadata-enabled`, `--polymarket-orderbook-enabled`.
+- Added event payload fields in `market_snapshot.observed`: `data_mode`, `adapter_versions`, `network_latency_ms`, `adapter_errors`, expanded `source_quality`.
+- Added `scripts/run_read_only_market_data_smoke.sh` and docs `docs/data_sources/read_only_market_data_adapters.md`.
+- Added tests:
+  - `tests/test_binance_spot_adapter.py`
+  - `tests/test_read_only_market_data_adapters.py`
+  - updated `tests/test_research_collector_candidate.py`.
+
 ### docs: summarize external edge candidates v1
 - Added final PR-style summary at `docs/research/external_edge_candidates_v1_final_summary.md`.
 - Documented branch scope, event types, scripts, tests, mock/dry-run execution, no-live boundaries, limitations, and next milestones.

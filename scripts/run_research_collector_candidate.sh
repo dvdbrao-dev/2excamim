@@ -10,5 +10,7 @@ python3 agents/research_collector_candidate.py \
   --windows "${RESEARCH_COLLECTOR_WINDOWS:-5m,15m}" \
   --sample-count "${RESEARCH_COLLECTOR_SAMPLE_COUNT:-1}" \
   --sample-interval-ms "${RESEARCH_COLLECTOR_SAMPLE_INTERVAL_MS:-1000}" \
-  --mock \
+  --data-mode "${RESEARCH_COLLECTOR_DATA_MODE:-mock}" \
+  --network-timeout-sec "${RESEARCH_COLLECTOR_NETWORK_TIMEOUT_SEC:-5}" \
+  --max-retries "${RESEARCH_COLLECTOR_MAX_RETRIES:-2}" \
   "$@"

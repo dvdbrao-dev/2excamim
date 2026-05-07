@@ -114,13 +114,18 @@ execution and must remain within paper/shadow governance boundaries.
 
 `market_snapshot.observed` candidate payload conventions:
 - `asset`, `window`, `slot_start`, `slot_end`, `market_slug`
+- `data_mode` (`mock|read_only`)
 - `spot_price`
 - `oracle_price` (nullable)
+- `metadata.market_id`, `metadata.condition_id`, `metadata.token_ids`, `metadata.title`
 - `orderbook.best_bid`, `orderbook.best_ask`, `orderbook.mid_price`, `orderbook.spread_bps`
 - `orderbook.depth_top_n`, `orderbook.imbalance_top_n`
 - `features.spot_delta_bps`, `features.oracle_spot_delta_bps`
 - `observation_latency_ms`
-- `source_quality`
+- `source_quality` (`mock|read_only_spot_only|read_only_metadata|read_only_orderbook|partial`)
+- `adapter_versions`
+- `network_latency_ms`
+- `adapter_errors`
 
 `candidate_signal.scored` candidate payload conventions:
 - `asset`, `window`, `slot_start`, `slot_end`, `market_slug`

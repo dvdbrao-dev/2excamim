@@ -56,6 +56,7 @@ Pendiente siguiente:
 - Mejorar datasets históricos y baselines estadísticos.
 - Mantener la frontera Python -> Rust simple y audititable.
 - Evaluar cuándo una señal justifica materializar también `hypothesis.generated`.
+- Consolidar adapters `read_only` públicos (Binance spot activo; metadata/orderbook Polymarket best-effort).
 
 Diferido / no prioritario:
 

@@ -81,7 +81,13 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Agente: `agents/research_collector_candidate.py`
 - Rol: recolectar snapshots research (`spot`, `oracle`, `orderbook`, health/gaps) para slots candidatos.
 - Modo seguro: `--mock` / `--dry-run`, sin credenciales ni ejecución live.
+- Modo `read_only` (opt-in): spot real público de Binance, metadata/orderbook Polymarket best-effort.
 - Operación opcional: `bash scripts/run_research_collector_candidate.sh` (no obligatorio en pipeline principal).
+
+### Read-only market data smoke
+- Script: `scripts/run_read_only_market_data_smoke.sh`
+- Salida por defecto: `var/events/read_only_smoke.jsonl`
+- Documentación: `docs/data_sources/read_only_market_data_adapters.md`
 
 ### Oracle Lag Signal Candidate (Phase 3)
 - Agente: `agents/oracle_lag_signal_candidate.py`
