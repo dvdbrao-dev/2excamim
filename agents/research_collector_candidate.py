@@ -106,7 +106,9 @@ def _parse_slots(path: Path, assets: set[str], windows: set[str]) -> list[SlotRe
         slot_end = payload.get("slot_end")
         if not all(isinstance(v, str) for v in (market_slug, slot_start, slot_end)):
             continue
-        slots.append(SlotRecord(asset=asset, window=window, slot_start=slot_start, slot_end=slot_end, market_slug=market_slug))
+        slots.append(
+            SlotRecord(asset=asset, window=window, slot_start=slot_start, slot_end=slot_end, market_slug=market_slug)
+        )
     return slots
 
 
@@ -114,37 +116,66 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _health_event(ok: bool, reason: str, ts: str, data_mode: str, adapter_errors: dict[str, str]) -> dict[str, Any]:
+def _health_event(
+    ok: bool,
+    partial: bool,
+    reason: str,
+    ts: str,
+    data_mode: str,
+    adapter_errors: dict[str, Any],
+    successful_assets: list[str],
+    failed_assets: list[str],
+) -> dict[str, Any]:
     return build_event(
         event_type="feed_health.checked",
         aggregate_key="feed:research-collector",
         payload={
             "ok": ok,
+            "partial": partial,
             "reason": reason,
             "source": SOURCE,
             "data_mode": data_mode,
+            "successful_assets": successful_assets,
+            "failed_assets": failed_assets,
             "adapter_errors": adapter_errors,
         },
         provenance=build_provenance(AGENT_ID, "shadow-research"),
-        unique_components=["research-collector", str(ok), reason, data_mode],
+        unique_components=[
+            "research-collector",
+            str(ok),
+            str(partial),
+            reason,
+            data_mode,
+            ",".join(successful_assets),
+            ",".join(failed_assets),
+        ],
         timestamp=ts,
     )
 
 
-def _gap_event(reason: str, ts: str, data_mode: str, adapter_errors: dict[str, str]) -> dict[str, Any]:
+def _gap_event(
+    reason: str,
+    ts: str,
+    data_mode: str,
+    adapter_errors: dict[str, Any],
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "gap_type": reason,
+        "source": SOURCE,
+        "from": ts,
+        "to": ts,
+        "data_mode": data_mode,
+        "adapter_errors": adapter_errors,
+    }
+    if details:
+        payload.update(details)
     return build_event(
         event_type="data_gap.detected",
         aggregate_key="feed:research-collector",
-        payload={
-            "gap_type": reason,
-            "source": SOURCE,
-            "from": ts,
-            "to": ts,
-            "data_mode": data_mode,
-            "adapter_errors": adapter_errors,
-        },
+        payload=payload,
         provenance=build_provenance(AGENT_ID, "shadow-research"),
-        unique_components=["research-collector", reason, data_mode],
+        unique_components=["research-collector", reason, data_mode, str(details or {})],
         timestamp=ts,
     )
 
@@ -160,7 +191,7 @@ def _snapshot_event(
     data_mode: str,
     source_quality: str,
     adapter_versions: dict[str, str],
-    adapter_errors: dict[str, str],
+    adapter_errors: dict[str, Any],
 ) -> dict[str, Any]:
     payload = {
         "asset": slot.asset,
@@ -212,6 +243,16 @@ def _mode(args: argparse.Namespace) -> str:
     return args.data_mode
 
 
+def _mock_spot(asset: str) -> float | None:
+    return {"BTC": 96000.0, "ETH": 3500.0, "SOL": 180.0}.get(asset)
+
+
+def _record_error(errors: dict[str, dict[str, str]], source: str, key: str, message: str) -> None:
+    if source not in errors:
+        errors[source] = {}
+    errors[source][key] = message
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     data_mode = _mode(args)
     assets = {a.upper() for a in _split_csv(args.assets)}
@@ -241,9 +282,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     if not slots:
         ts = _now_iso()
-        events.append(_gap_event("missing_market_slots", ts, data_mode, {}))
+        events.append(_gap_event("missing_market_slots", ts, data_mode, {}, details={"assets": sorted(assets)}))
 
     rolling: dict[tuple[str, str], deque[float]] = {}
+    successful_assets: set[str] = set()
+    all_adapter_errors: dict[str, dict[str, str]] = {}
     failures = 0
 
     for slot in slots:
@@ -252,11 +295,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             rolling[key] = deque(maxlen=max(2, args.sample_count))
 
         for i in range(max(1, args.sample_count)):
-            adapter_errors: dict[str, str] = {}
+            adapter_errors: dict[str, Any] = {}
             total_latency_ms = 0
 
             if data_mode == "mock":
-                spot_price = {"BTC": 96000.0, "ETH": 3500.0, "SOL": 180.0}.get(slot.asset)
+                spot_price = _mock_spot(slot.asset)
                 metadata = _default_metadata(slot)
                 orderbook = {
                     "best_bid": 0.47,
@@ -272,7 +315,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 total_latency_ms += spot.latency_ms
                 spot_price = spot.price
                 if spot.error:
-                    adapter_errors["spot"] = spot.error
+                    _record_error(all_adapter_errors, "binance_spot", slot.asset, spot.error)
+                    adapter_errors["binance_spot"] = {slot.asset: spot.error}
 
                 if args.polymarket_metadata_enabled:
                     meta = metadata_adapter.observe(slot.market_slug)
@@ -287,8 +331,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         meta.raw_source_summary,
                     )
                     if meta.error:
-                        adapter_errors["metadata"] = meta.error
-                        events.append(_gap_event("missing_polymarket_metadata", _now_iso(), data_mode, adapter_errors))
+                        _record_error(all_adapter_errors, "polymarket_metadata", slot.market_slug, meta.error)
+                        adapter_errors["polymarket_metadata"] = {slot.market_slug: meta.error}
+                        events.append(
+                            _gap_event(
+                                "missing_polymarket_metadata",
+                                _now_iso(),
+                                data_mode,
+                                adapter_errors,
+                                details={"asset": slot.asset, "window": slot.window, "market_slug": slot.market_slug},
+                            )
+                        )
                 else:
                     metadata = MockMetadata(None, None, None, None, None, None, "metadata_disabled")
 
@@ -304,8 +357,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "imbalance_top_n": {"n": 2, "value": ob.imbalance_top_n},
                     }
                     if ob.error:
-                        adapter_errors["orderbook"] = ob.error
-                        events.append(_gap_event("missing_polymarket_orderbook", _now_iso(), data_mode, adapter_errors))
+                        key_id = metadata.market_id or slot.market_slug
+                        _record_error(all_adapter_errors, "polymarket_orderbook", key_id, ob.error)
+                        adapter_errors["polymarket_orderbook"] = {key_id: ob.error}
+                        events.append(
+                            _gap_event(
+                                "missing_polymarket_orderbook",
+                                _now_iso(),
+                                data_mode,
+                                adapter_errors,
+                                details={"asset": slot.asset, "window": slot.window, "market_slug": slot.market_slug},
+                            )
+                        )
                 else:
                     orderbook = {
                         "best_bid": None,
@@ -315,11 +378,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "depth_top_n": {"n": 2, "bid": None, "ask": None},
                         "imbalance_top_n": {"n": 2, "value": None},
                     }
-                    adapter_errors["orderbook"] = "orderbook_adapter_disabled"
 
-                if args.polymarket_orderbook_enabled and "orderbook" not in adapter_errors:
+                if args.polymarket_orderbook_enabled and "polymarket_orderbook" not in adapter_errors:
                     source_quality = "read_only_orderbook"
-                elif args.polymarket_metadata_enabled and "metadata" not in adapter_errors:
+                elif args.polymarket_metadata_enabled and "polymarket_metadata" not in adapter_errors:
                     source_quality = "read_only_metadata"
                 elif spot_price is not None:
                     source_quality = "read_only_spot_only"
@@ -328,9 +390,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
             if spot_price is None:
                 failures += 1
-                events.append(_gap_event(f"missing_spot_price:{slot.asset}", _now_iso(), data_mode, adapter_errors))
+                events.append(
+                    _gap_event(
+                        "missing_spot_price",
+                        _now_iso(),
+                        data_mode,
+                        adapter_errors,
+                        details={"asset": slot.asset, "window": slot.window, "slot_start": slot.slot_start, "slot_end": slot.slot_end},
+                    )
+                )
                 continue
 
+            successful_assets.add(slot.asset)
             rolling[key].append(float(spot_price) + (i * 0.01))
             events.append(
                 _snapshot_event(
@@ -348,10 +419,37 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 )
             )
 
+    successful_list = sorted(successful_assets)
+    failed_list = sorted(a for a in assets if a not in successful_assets)
     ts = _now_iso()
-    ok = failures == 0
-    reason = "ok" if ok else "spot_failures_detected"
-    events.insert(0, _health_event(ok, reason, ts, data_mode, {}))
+
+    if data_mode == "mock":
+        ok = True
+        partial = False
+        reason = "mock_adapters_active"
+    else:
+        ok = len(successful_list) == len(assets)
+        partial = len(successful_list) > 0 and not ok
+        if ok:
+            reason = "all_requested_assets_observed"
+        elif partial:
+            reason = "partial_spot_coverage"
+        else:
+            reason = "spot_failures_detected"
+
+    events.insert(
+        0,
+        _health_event(
+            ok=ok,
+            partial=partial,
+            reason=reason,
+            ts=ts,
+            data_mode=data_mode,
+            adapter_errors=all_adapter_errors,
+            successful_assets=successful_list,
+            failed_assets=failed_list,
+        ),
+    )
 
     output = Path(args.output_jsonl)
     persisted = 0
@@ -359,8 +457,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if append_event_jsonl(output, event, dry_run=args.dry_run):
             persisted += 1
 
-    if failures > 0 and not args.fail_soft:
-        raise SystemExit("read_only collection encountered spot failures; use --fail-soft to continue")
+    if data_mode == "read_only" and not args.fail_soft and not ok:
+        raise SystemExit("read_only collection did not observe all requested assets; use --fail-soft to continue")
 
     return {
         "actor": AGENT_ID,
@@ -376,6 +474,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "sample_count": args.sample_count,
         "network_timeout_sec": args.network_timeout_sec,
         "max_retries": args.max_retries,
+        "successful_assets": successful_list,
+        "failed_assets": failed_list,
     }
 
 

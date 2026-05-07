@@ -2,6 +2,19 @@
 
 ## 2026-05-07
 
+### fix: improve read-only smoke diagnostics
+- Fixed `feed_health.checked` semantics in `read_only` mode:
+  - `ok=true` only when all requested spot assets are observed,
+  - `partial=true` when coverage is mixed,
+  - explicit `successful_assets` and `failed_assets`.
+- Added nested `adapter_errors` diagnostics per source and per asset/slug (e.g. `binance_spot.BTC`), avoiding empty errors on spot failures.
+- Ensured `read_only` emits `market_snapshot.observed` only when real spot is available and emits `data_gap.detected` with slot context when missing.
+- Improved `scripts/run_read_only_market_data_smoke.sh`:
+  - truncates output file for fresh-run diagnostics,
+  - prints event counts and last feed health summary,
+  - supports `STRICT=1` to fail when no real spot snapshots are collected.
+- Expanded tests in `tests/test_read_only_market_data_adapters.py` for all-fail, partial, success, and missing-spot cases.
+
 ### feat: add read-only market data adapters
 - Added `agents/adapters/` package with:
   - `binance_spot_adapter.py` (public spot prices BTC/ETH/SOL),

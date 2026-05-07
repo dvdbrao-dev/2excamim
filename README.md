@@ -87,6 +87,7 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 ### Read-only market data smoke
 - Script: `scripts/run_read_only_market_data_smoke.sh`
 - Salida por defecto: `var/events/read_only_smoke.jsonl`
+- Modo estricto opcional: `STRICT=1 bash scripts/run_read_only_market_data_smoke.sh`
 - Documentación: `docs/data_sources/read_only_market_data_adapters.md`
 
 ### Oracle Lag Signal Candidate (Phase 3)

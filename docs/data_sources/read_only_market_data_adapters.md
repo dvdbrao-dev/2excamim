@@ -30,6 +30,24 @@ python3 agents/research_collector_candidate.py --data-mode mock
 bash scripts/run_read_only_market_data_smoke.sh
 ```
 
+## Smoke interpretation
+- `ok=false` means no complete spot coverage for requested assets in this run.
+- `partial=true` means at least one requested asset succeeded and at least one failed.
+- `adapter_errors` contains per-source and per-asset diagnostics (for example `binance_spot.BTC`).
+
+## Strict mode
+```bash
+STRICT=1 bash scripts/run_read_only_market_data_smoke.sh
+```
+- Strict mode fails if zero real `market_snapshot.observed` events were collected.
+- This is intended to prove environment-level read-only reachability.
+
+## Common failures
+- DNS resolution failure
+- Firewall/egress policy block
+- Endpoint geo/block policy (for example HTTP 451)
+- Timeout
+
 ## Risks
 - Public endpoint availability can vary by region/environment.
 - Latency and rate limits can degrade data completeness.

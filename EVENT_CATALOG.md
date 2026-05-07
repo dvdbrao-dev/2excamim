@@ -127,6 +127,15 @@ execution and must remain within paper/shadow governance boundaries.
 - `network_latency_ms`
 - `adapter_errors`
 
+`feed_health.checked` candidate payload conventions:
+- `ok` (true only when all requested spot assets were observed)
+- `partial` (true when some requested assets succeeded and others failed)
+- `reason` (`all_requested_assets_observed|partial_spot_coverage|spot_failures_detected|mock_adapters_active`)
+- `data_mode`
+- `successful_assets`
+- `failed_assets`
+- `adapter_errors` (nested per source and per asset/slug, e.g. `binance_spot.BTC`)
+
 `candidate_signal.scored` candidate payload conventions:
 - `asset`, `window`, `slot_start`, `slot_end`, `market_slug`
 - `side` (`UP|DOWN`)

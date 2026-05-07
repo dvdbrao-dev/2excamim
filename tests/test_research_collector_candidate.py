@@ -59,8 +59,11 @@ def test_mock_collector_emits_valid_jsonl(tmp_path: Path) -> None:
 
     rows = load_jsonl(out)
     snapshots = [row for row in rows if row.get("event_type") == "market_snapshot.observed"]
+    health = [row for row in rows if row.get("event_type") == "feed_health.checked"][-1]["payload"]
     assert snapshots
     assert snapshots[0]["payload"]["source_quality"] == "mock"
+    assert health["ok"] is True
+    assert health["partial"] is False
 
 
 def test_missing_data_emits_data_gap_detected(tmp_path: Path) -> None:
