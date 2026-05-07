@@ -46,6 +46,13 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - LLM: gpt-4o-mini (OpenAI) via MixMCP pattern
 - Infra: Hetzner VPS Ubuntu 24.04, systemd timer
 
+## External Edge Candidate Program (V1)
+- Objetivo: convertir research externo en hipótesis internas, no importar bots completos.
+- Prioridad: `gengar_polymarket_bot` (hipótesis de oracle lag) y `polyrec` (harness de snapshots/backtests).
+- Utilidad candidata: `Polymarket-Market-Finder` para discovery determinista de slots 5m/15m.
+- Restricciones: candidate/shadow-only, sin live trading por defecto, sin credenciales, sin órdenes reales.
+- Contrato: todo componente nuevo debe emitir eventos JSONL con `event_type`, `event_id`, `timestamp`, `idempotency_key`, `aggregate_key`, `provenance`, `payload`.
+
 ## Arranque rápido
 ```bash
 bash scripts/run_pipeline.sh

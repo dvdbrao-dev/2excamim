@@ -101,3 +101,18 @@ Propiedades:
 - sin coste de API
 - acoplamiento a Polymarket via snapshots JSONL
 - confirmacion y sizing reusan el store append-only existente
+
+## External Edge Candidate Boundary v1
+
+Este programa agrega una frontera documental para incorporar ideas externas sin absorber bots completos.
+
+Principios:
+- repos externos se usan como insumo de hipótesis y utilidades, no como runtime importado
+- todo componente derivado mantiene estado candidate/shadow-first
+- Rust conserva el contrato de eventos y persistencia JSONL append-only
+- cualquier integración pasa por eventos con envelope explícito e idempotencia
+
+Prioridades v1:
+- hipótesis de oracle lag en mercados cripto de Polymarket
+- harness de research para snapshots y backtests offline
+- discovery determinista de mercados/slots como utilidad candidata

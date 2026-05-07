@@ -33,6 +33,8 @@ It only covers the existing event set:
   `fill_id`, `confirmed_by`, and `venue` must not be blank.
 - Any field contributing to an idempotency key must not contain `:`.
 - `correlation_id` is optional but, when present, must not be blank.
+- For externally-derived candidates, producers should also expose a stable `aggregate_key` in their
+  pre-contract envelope so the Rust boundary can map aggregate lineage deterministically.
 
 ### Minimum timestamp semantics
 
@@ -50,6 +52,23 @@ It only covers the existing event set:
 - Replays with the same idempotency key but contradictory contract content are invalid.
 - Replays with the same idempotency key and contract-equivalent content are tolerated as duplicates.
 - Consumers must treat event processing as at-least-once and be safe under duplicate delivery.
+- External candidate producers must keep `idempotency_key` stable across retries for the same
+  semantic fact before Rust translation.
+
+### External candidate pre-contract envelope
+
+Before translation into typed Rust events, candidate/shadow research components should emit a
+pre-contract envelope with:
+- `event_type`
+- `event_id`
+- `timestamp`
+- `idempotency_key`
+- `aggregate_key`
+- `provenance`
+- `payload`
+
+This envelope does not replace typed contracts below; it standardizes ingestion boundaries for
+externally-derived research outputs.
 
 ### Derived readiness semantics
 

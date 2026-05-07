@@ -318,6 +318,45 @@ Diferido / no prioritario:
 
 Estado: intencionalmente diferido.
 
+## 12. External Edge Candidates V1
+
+Estado: planificado (candidate/shadow-first, sin implementación de agentes en esta fase).
+
+### Phase 0: event contract and docs
+- Formalizar frontera documental para edge externo derivado.
+- Exigir envelope mínimo por evento (`event_type`, `event_id`, `timestamp`, `idempotency_key`, `aggregate_key`, `provenance`, `payload`).
+- Mantener Rust como única capa contractual de persistencia/event-sourcing.
+
+### Phase 1: slot discovery candidate
+- Crear candidato de discovery determinista para slots cripto 5m/15m.
+- Base de investigación: patrones de `Polymarket-Market-Finder` sin importar repo completo.
+- Salida prevista: universo de mercados candidato trazable y reproducible.
+
+### Phase 2: research snapshot collector
+- Construir collector research-only de snapshots (oracle/spot/orderbook).
+- Base de investigación: `polyrec` como referencia de harness.
+- Persistencia append-only en JSONL, sin rediseñar store actual.
+
+### Phase 3: oracle lag candidate scorer
+- Evaluar hipótesis de lag entre oracle y precio spot.
+- Base de investigación: `gengar_polymarket_bot` como señal de hipótesis, no como bot ejecutable.
+- Producir scoring candidato auditable para promoción posterior.
+
+### Phase 4: shadow execution and scorecard
+- Ejecutar en modo shadow/paper con scorecard explícito.
+- Medir precisión, estabilidad, drawdown proxy y sensibilidad a costos.
+- No habilitar live execution en esta fase.
+
+### Phase 5: offline backtest harness
+- Consolidar harness offline para replay/backtest de candidatos externos.
+- Reusar pipeline y gobernanza actual (candidate/promoted/frozen/rejected).
+- Mantener reproducibilidad e idempotencia como requisito central.
+
+### Phase 6: optional cross-venue matcher research
+- Investigación opcional offline de matching Kalshi/Polymarket.
+- Sin integración operativa ni ejecución cross-venue.
+- Activar solo cuando fases 1-5 tengan evidencia suficiente.
+
 Incluye hoy:
 
 - Nada live.
