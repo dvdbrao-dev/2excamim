@@ -2,6 +2,17 @@
 
 ## 2026-05-07
 
+### feat: add oracle lag signal candidate
+- Added `agents/oracle_lag_signal_candidate.py` (deterministic, shadow-only scorer).
+- Reads `market_snapshot.observed` and emits:
+  - `oracle_lag.observed`
+  - `candidate_signal.scored`
+- Added pure scoring helpers and conservative hard filters (stale, spread, price band, slot timing, data sufficiency).
+- Added tests in `tests/test_oracle_lag_signal_candidate.py`.
+- Added optional launcher `scripts/run_oracle_lag_signal_candidate.sh`.
+- Added docs in `docs/agents/oracle_lag_signal_candidate.md`.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md`.
+
 ### feat: add research snapshot collector candidate
 - Added `agents/research_collector_candidate.py` with modular adapters:
   - `SpotPriceAdapter`

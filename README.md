@@ -81,6 +81,13 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Modo seguro: `--mock` / `--dry-run`, sin credenciales ni ejecución live.
 - Operación opcional: `bash scripts/run_research_collector_candidate.sh` (no obligatorio en pipeline principal).
 
+### Oracle Lag Signal Candidate (Phase 3)
+- Agente: `agents/oracle_lag_signal_candidate.py`
+- Rol: puntuar señales candidatas cuando `spot/oracle` parece adelantarse al ajuste de `book mid`.
+- Filtros duros: stale feed, spread alto, snapshots insuficientes, banda de precio y proximidad a fin de slot.
+- Salida: `oracle_lag.observed` + `candidate_signal.scored` en modo shadow-only no ejecutable.
+- Operación opcional: `bash scripts/run_oracle_lag_signal_candidate.sh`.
+
 ## Arranque rápido
 ```bash
 bash scripts/run_pipeline.sh

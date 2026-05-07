@@ -111,6 +111,17 @@ execution and must remain within paper/shadow governance boundaries.
 - `observation_latency_ms`
 - `source_quality`
 
+`candidate_signal.scored` candidate payload conventions:
+- `asset`, `window`, `slot_start`, `slot_end`, `market_slug`
+- `side` (`UP|DOWN`)
+- `spot_delta_bps`, `oracle_delta_bps` (nullable), `book_mid_delta_bps`, `lag_gap_bps`
+- `best_bid`, `best_ask`, `spread_bps`
+- `confidence` (`0..1`)
+- `raw_edge_bps`
+- `rejected` (boolean), `reject_reason` (nullable string)
+- `strategy_version`
+- governance safety markers (`governance_state=candidate`, `promoted=false`, `executable=false`)
+
 ### Derived readiness semantics
 
 - Readiness and lifecycle are derived by query-time interpretation of the current event log.

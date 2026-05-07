@@ -344,6 +344,7 @@ Estado: planificado (candidate/shadow-first, sin implementación de agentes en e
 - Evaluar hipótesis de lag entre oracle y precio spot.
 - Base de investigación: `gengar_polymarket_bot` como señal de hipótesis, no como bot ejecutable.
 - Producir scoring candidato auditable para promoción posterior.
+- Estado: en progreso (`agents/oracle_lag_signal_candidate.py` con scoring determinista + filtros conservadores).
 
 ### Phase 4: shadow execution and scorecard
 - Ejecutar en modo shadow/paper con scorecard explícito.
