@@ -98,6 +98,14 @@ def parse_args() -> argparse.Namespace:
         help="Minimum number of independent positive checks required to confirm.",
     )
     parser.add_argument(
+        "--cargo-bin",
+        default="",
+        help=(
+            "Backward-compatibility flag. If provided and missing on disk, "
+            "confirmation is counted as persistence failure and not persisted."
+        ),
+    )
+    parser.add_argument(
         "--checkpoint",
         default="",
         help="Optional checkpoint path (default: <store-dir>/.checkpoints/<agent>.json).",
@@ -480,6 +488,22 @@ def main() -> int:
             )
             continue
 
+        # Backward compatibility for tests/tools that still pass --cargo-bin.
+        # If caller explicitly requests a binary and it does not exist, do not
+        # fallback to JSONL persistence.
+        if isinstance(args.cargo_bin, str) and args.cargo_bin.strip():
+            cargo_bin_path = Path(args.cargo_bin.strip())
+            if not cargo_bin_path.exists():
+                persistence_failures.append(
+                    {
+                        "signal_id": candidate.signal_id,
+                        "signal_kind": candidate.signal_kind,
+                        "error_type": "MissingCargoBin",
+                        "error_message": f"--cargo-bin not found: {cargo_bin_path}",
+                    }
+                )
+                continue
+
         success, error = confirm_via_jsonl(
             store_path,
             candidate,
@@ -532,6 +556,7 @@ def main() -> int:
             "crypto_candidates": len(crypto_candidates),
             "already_confirmed": already_confirmed,
             "rejected_candidates": rejected,
+            "confirmed_via_cli": jsonl_successes,
             "confirmed_via_jsonl": jsonl_successes,
             "unsupported_kind_skipped": unsupported_kinds,
             "persistence_failures": len(persistence_failures),
