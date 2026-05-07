@@ -18,13 +18,31 @@ fn temp_path(name: &str, extension: &str) -> PathBuf {
     ))
 }
 
-fn python_interpreter() -> &'static str {
-    "research_prediction_markets/.venv/bin/python"
+fn python_interpreter() -> String {
+    if let Ok(py) = std::env::var("PYTHON") {
+        if !py.trim().is_empty() {
+            return py;
+        }
+    }
+
+    let venv_python = Path::new("research_prediction_markets/.venv/bin/python");
+    if venv_python.exists() {
+        return venv_python.display().to_string();
+    }
+
+    let sibling_repo_venv =
+        Path::new("/root/2excamim/research_prediction_markets/.venv/bin/python");
+    if sibling_repo_venv.exists() {
+        return sibling_repo_venv.display().to_string();
+    }
+
+    "python3".to_string()
 }
 
 fn write_research_parquet(path: &Path, rows: &[serde_json::Value]) {
     let payload = serde_json::to_string(rows).unwrap();
-    let output = Command::new(python_interpreter())
+    let interpreter = python_interpreter();
+    let output = Command::new(&interpreter)
         .arg("-c")
         .arg(
             r#"
@@ -48,7 +66,8 @@ df.to_parquet(sys.argv[1], index=False)
 
     assert!(
         output.status.success(),
-        "{}",
+        "python_interpreter={} stderr={}",
+        interpreter,
         String::from_utf8_lossy(&output.stderr)
     );
 }

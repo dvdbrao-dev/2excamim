@@ -228,6 +228,12 @@ fn resolve_python_interpreter() -> Result<PathBuf, HandoffError> {
         return Ok(venv_python);
     }
 
+    let sibling_worktree_venv =
+        PathBuf::from("/root/2excamim/research_prediction_markets/.venv/bin/python");
+    if sibling_worktree_venv.exists() {
+        return Ok(sibling_worktree_venv);
+    }
+
     let output = Command::new("python3").arg("--version").output();
     match output {
         Ok(result) if result.status.success() => Ok(PathBuf::from("python3")),
