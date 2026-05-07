@@ -2,6 +2,13 @@
 
 ## 2026-05-07
 
+### feat: add research-only cross venue matcher skeleton
+- Added `agents/cross_venue_matcher_candidate.py` for deterministic Polymarket/Kalshi market-match scoring.
+- Added event type `cross_venue.market_match_scored` to external candidate event registry.
+- Added tests in `tests/test_cross_venue_matcher_candidate.py` for exact match and key rejection cases.
+- Added docs `docs/research/cross_venue_market_matching.md` with explicit “Matching is not edge” guidance.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md`.
+
 ### feat: add external candidate reporting
 - Added `agents/external_candidate_report.py` to generate markdown observability reports from external candidate JSONL events.
 - Report coverage includes per-strategy, per-asset/window, and per-run views.

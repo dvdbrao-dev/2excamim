@@ -365,6 +365,7 @@ Estado: planificado (candidate/shadow-first, sin implementación de agentes en e
 - Investigación opcional offline de matching Kalshi/Polymarket.
 - Sin integración operativa ni ejecución cross-venue.
 - Activar solo cuando fases 1-5 tengan evidencia suficiente.
+- Estado inicial: en progreso (`agents/cross_venue_matcher_candidate.py`) con matching determinista/string/date/strike y salida research-only `cross_venue.market_match_scored`.
 
 Incluye hoy:
 

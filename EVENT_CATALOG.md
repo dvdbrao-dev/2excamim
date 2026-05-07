@@ -86,6 +86,7 @@ Allowed `event_type` values for the initial external-candidate program:
 - `candidate_strategy.evaluated`
 - `data_gap.detected`
 - `feed_health.checked`
+- `cross_venue.market_match_scored`
 
 These are candidate/shadow/research-oriented signals and observations. They do not imply live
 execution and must remain within paper/shadow governance boundaries.
@@ -155,6 +156,15 @@ execution and must remain within paper/shadow governance boundaries.
 - `auto_promoted` (always `false` by default)
 - `reason`
 - `thresholds` snapshot
+
+
+`cross_venue.market_match_scored` payload conventions:
+- `polymarket_market_id`, `kalshi_market_id`
+- `polymarket_title`, `kalshi_title`
+- `asset`, `window`, `strike`
+- `confidence`
+- `reasons`
+- `rejected`, `reject_reason`
 
 Backtest harness event types:
 - `backtest.run_started`

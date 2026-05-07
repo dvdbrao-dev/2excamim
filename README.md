@@ -109,6 +109,18 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
   - `reports/external_candidates/oracle_lag_v1_backtest.md`
 - Operación opcional: `bash scripts/run_external_candidate_backtest.sh`.
 
+### Cross-Venue Matcher Skeleton (Phase 6 research)
+- Agente: `agents/cross_venue_matcher_candidate.py`
+- Rol: matching research-only de mercados Polymarket/Kalshi con scoring determinista.
+- Salida por defecto: `var/events/cross_venue_matches.jsonl`.
+- Importante: matching de mercados no implica edge ni estrategia ejecutable.
+- Operación opcional:
+```bash
+python3 agents/cross_venue_matcher_candidate.py \
+  --polymarket-markets-json ./data/polymarket_markets.json \
+  --kalshi-markets-json ./data/kalshi_markets.json
+```
+
 ### External Candidate Reporting
 - Agente: `agents/external_candidate_report.py`
 - Rol: generar observabilidad Markdown por estrategia, asset/window y run para candidatos externos.

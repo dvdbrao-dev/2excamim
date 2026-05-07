@@ -36,6 +36,7 @@ ALLOWED_EXTERNAL_EVENT_TYPES = {
     "candidate_strategy.evaluated",
     "data_gap.detected",
     "feed_health.checked",
+    "cross_venue.market_match_scored",
 }
 
 
