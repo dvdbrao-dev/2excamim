@@ -138,6 +138,24 @@ execution and must remain within paper/shadow governance boundaries.
 - `max_adverse_excursion`
 - `notes`
 
+`candidate_strategy.evaluated` payload conventions:
+- `strategy_version`
+- core metrics:
+  - `signal_count`, `rejected_signal_count`, `rejection_rate`
+  - `shadow_fill_count`, `shadow_fill_rate`
+  - `resolved_round_count`
+  - `gross_pnl_usdc`, `net_pnl_usdc`
+  - `avg_net_edge_bps`, `median_net_edge_bps`
+  - `max_drawdown_usdc`, `win_rate`, `expectancy_usdc`
+  - `avg_fee_usdc`, `avg_slippage_usdc`, `avg_latency_ms`
+  - `data_gap_count`, `stale_feed_count`
+- governance outputs:
+  - `status` (effective)
+  - `suggested_status` (advisory)
+  - `auto_promoted` (always `false` by default)
+  - `reason`
+  - `thresholds` snapshot
+
 ### Derived readiness semantics
 
 - Readiness and lifecycle are derived by query-time interpretation of the current event log.

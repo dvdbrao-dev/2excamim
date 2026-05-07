@@ -2,6 +2,15 @@
 
 ## 2026-05-07
 
+### feat: add external candidate scorecard governance
+- Added `agents/external_candidate_scorecard.py` to aggregate external candidate metrics and evaluate governance state.
+- Emits `candidate_strategy.evaluated`.
+- Includes conservative default thresholds and no auto-promotion policy (promotion only suggested).
+- Added tests in `tests/test_external_candidate_scorecard.py`.
+- Added docs `docs/agents/external_candidate_scorecard.md`.
+- Added optional launcher `scripts/run_external_candidate_scorecard.sh`.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md`.
+
 ### feat: add conservative shadow execution simulator
 - Added `agents/shadow_execution_simulator.py` to transform `candidate_signal.scored` into:
   - `shadow_fill.simulated`

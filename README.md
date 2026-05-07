@@ -94,6 +94,13 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Modelo conservador: fee, slippage, latencia y probabilidad de fill explícita.
 - Operación opcional: `bash scripts/run_shadow_execution_simulator.sh`.
 
+### External Candidate Scorecard
+- Agente: `agents/external_candidate_scorecard.py`
+- Rol: consolidar métricas de `candidate_signal.scored`, `shadow_fill.simulated` y `strategy_round.scored`.
+- Resultado: evento `candidate_strategy.evaluated` con `status` efectivo y `suggested_status`.
+- Regla de seguridad: no auto-promoción por defecto (solo sugerencia de promoción).
+- Operación opcional: `bash scripts/run_external_candidate_scorecard.sh`.
+
 ## Arranque rápido
 ```bash
 bash scripts/run_pipeline.sh
