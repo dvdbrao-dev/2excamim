@@ -2,6 +2,12 @@
 
 ## 2026-05-07
 
+### docs: summarize external edge candidates v1
+- Added final PR-style summary at `docs/research/external_edge_candidates_v1_final_summary.md`.
+- Documented branch scope, event types, scripts, tests, mock/dry-run execution, no-live boundaries, limitations, and next milestones.
+- Added summary pointer in `README.md`.
+- Updated `ROADMAP.md` external candidate phases to reflect implemented status and separated next milestones.
+
 ### chore: harden external candidate tooling
 - Fixed deterministic staleness evaluation in `agents/oracle_lag_signal_candidate.py` (uses replay/eval timestamp instead of wall clock) to avoid false stale rejections in offline/test workflows.
 - Added cross-links across `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md` for external candidate docs.

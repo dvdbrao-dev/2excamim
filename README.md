@@ -53,6 +53,7 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Restricciones: candidate/shadow-only, sin live trading por defecto, sin credenciales, sin órdenes reales.
 - Contrato: todo componente nuevo debe emitir eventos JSONL con `event_type`, `event_id`, `timestamp`, `idempotency_key`, `aggregate_key`, `provenance`, `payload`.
 - Plan maestro: `docs/research/external_edge_candidates_v1.md`.
+- Resumen final de rama: `docs/research/external_edge_candidates_v1_final_summary.md`.
 
 ## Event Envelope (external candidates)
 - Implementación base: `agents/core/event_envelope.py`.
