@@ -75,6 +75,12 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Salida: eventos `market_slot.discovered` en `./var/events/external_candidates.jsonl` (por defecto).
 - Operación opcional: `bash scripts/run_slot_discovery_candidate.sh` (no obligatorio en pipeline principal).
 
+### Research Snapshot Collector Candidate (Phase 2)
+- Agente: `agents/research_collector_candidate.py`
+- Rol: recolectar snapshots research (`spot`, `oracle`, `orderbook`, health/gaps) para slots candidatos.
+- Modo seguro: `--mock` / `--dry-run`, sin credenciales ni ejecución live.
+- Operación opcional: `bash scripts/run_research_collector_candidate.sh` (no obligatorio en pipeline principal).
+
 ## Arranque rápido
 ```bash
 bash scripts/run_pipeline.sh

@@ -101,6 +101,16 @@ execution and must remain within paper/shadow governance boundaries.
 - `confirmed` (boolean; default false when no network confirmation)
 - `source` (`slot_discovery_candidate`)
 
+`market_snapshot.observed` candidate payload conventions:
+- `asset`, `window`, `slot_start`, `slot_end`, `market_slug`
+- `spot_price`
+- `oracle_price` (nullable)
+- `orderbook.best_bid`, `orderbook.best_ask`, `orderbook.mid_price`, `orderbook.spread_bps`
+- `orderbook.depth_top_n`, `orderbook.imbalance_top_n`
+- `features.spot_delta_bps`, `features.oracle_spot_delta_bps`
+- `observation_latency_ms`
+- `source_quality`
+
 ### Derived readiness semantics
 
 - Readiness and lifecycle are derived by query-time interpretation of the current event log.

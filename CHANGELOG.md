@@ -2,6 +2,18 @@
 
 ## 2026-05-07
 
+### feat: add research snapshot collector candidate
+- Added `agents/research_collector_candidate.py` with modular adapters:
+  - `SpotPriceAdapter`
+  - `OraclePriceAdapter`
+  - `OrderBookAdapter`
+  - slot JSONL input reader (`market_slot.discovered`)
+- Added pure feature helpers for spread/mid/depth/imbalance/spot-delta/oracle-spot-delta.
+- Added tests in `tests/test_research_collector_candidate.py`.
+- Added optional launcher `scripts/run_research_collector_candidate.sh`.
+- Added docs in `docs/agents/research_collector_candidate.md`.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md`.
+
 ### feat: add market slot discovery candidate
 - Added `agents/market_slot_discovery_candidate.py` for deterministic UTC slot discovery (BTC/ETH/SOL, 5m/15m).
 - Added optional script `scripts/run_slot_discovery_candidate.sh` (not mandatory in core pipeline).

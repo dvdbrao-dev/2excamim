@@ -338,6 +338,7 @@ Estado: planificado (candidate/shadow-first, sin implementación de agentes en e
 - Construir collector research-only de snapshots (oracle/spot/orderbook).
 - Base de investigación: `polyrec` como referencia de harness.
 - Persistencia append-only en JSONL, sin rediseñar store actual.
+- Estado: en progreso (`agents/research_collector_candidate.py` con adapters mock, features puros y eventos de health/gap).
 
 ### Phase 3: oracle lag candidate scorer
 - Evaluar hipótesis de lag entre oracle y precio spot.
