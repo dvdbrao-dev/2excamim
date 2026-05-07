@@ -14,6 +14,9 @@ It only covers the existing event set:
 - `order.submitted`
 - `fill.received`
 
+For external-derived candidate research, this catalog also defines the pre-contract
+event envelope and the initial event-type registry used by Python candidate agents.
+
 ## Cross-Cutting Rules v1
 
 ### Payload vs linkage
@@ -69,6 +72,23 @@ pre-contract envelope with:
 
 This envelope does not replace typed contracts below; it standardizes ingestion boundaries for
 externally-derived research outputs.
+
+### External candidate initial event types (v1)
+
+Allowed `event_type` values for the initial external-candidate program:
+- `external_repo.audit_recorded`
+- `market_slot.discovered`
+- `market_snapshot.observed`
+- `oracle_lag.observed`
+- `candidate_signal.scored`
+- `shadow_fill.simulated`
+- `strategy_round.scored`
+- `candidate_strategy.evaluated`
+- `data_gap.detected`
+- `feed_health.checked`
+
+These are candidate/shadow/research-oriented signals and observations. They do not imply live
+execution and must remain within paper/shadow governance boundaries.
 
 ### Derived readiness semantics
 

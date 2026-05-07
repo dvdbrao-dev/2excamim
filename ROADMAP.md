@@ -326,6 +326,7 @@ Estado: planificado (candidate/shadow-first, sin implementación de agentes en e
 - Formalizar frontera documental para edge externo derivado.
 - Exigir envelope mínimo por evento (`event_type`, `event_id`, `timestamp`, `idempotency_key`, `aggregate_key`, `provenance`, `payload`).
 - Mantener Rust como única capa contractual de persistencia/event-sourcing.
+- Estado: en progreso (utilidad base y tests iniciales agregados en `agents/core/event_envelope.py`).
 
 ### Phase 1: slot discovery candidate
 - Crear candidato de discovery determinista para slots cripto 5m/15m.

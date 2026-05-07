@@ -53,6 +53,22 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Restricciones: candidate/shadow-only, sin live trading por defecto, sin credenciales, sin órdenes reales.
 - Contrato: todo componente nuevo debe emitir eventos JSONL con `event_type`, `event_id`, `timestamp`, `idempotency_key`, `aggregate_key`, `provenance`, `payload`.
 
+## Event Envelope (external candidates)
+- Implementación base: `agents/core/event_envelope.py`.
+- Validación estricta de campos requeridos y formato (`UUID`, timestamp ISO-8601, payload/provenance objeto).
+- Escritura JSONL de una línea por evento con append idempotente sobre `agents/core/event_store.py`.
+- Tipos iniciales habilitados:
+  - `external_repo.audit_recorded`
+  - `market_slot.discovered`
+  - `market_snapshot.observed`
+  - `oracle_lag.observed`
+  - `candidate_signal.scored`
+  - `shadow_fill.simulated`
+  - `strategy_round.scored`
+  - `candidate_strategy.evaluated`
+  - `data_gap.detected`
+  - `feed_health.checked`
+
 ## Arranque rápido
 ```bash
 bash scripts/run_pipeline.sh
