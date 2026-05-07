@@ -6,6 +6,9 @@ export PYTHONPATH="${PYTHONPATH:-/root/2excamim}"
 KILL_SWITCH="./var/.kill_switch"
 FAILURES_DIR="./var/.failures"
 MAX_FAILURES=5
+EXTERNAL_EDGE_CANDIDATES_ENABLED="${EXTERNAL_EDGE_CANDIDATES_ENABLED:-0}"
+EXTERNAL_EDGE_MOCK_MODE="${EXTERNAL_EDGE_MOCK_MODE:-1}"
+EXTERNAL_EDGE_OUTPUT_JSONL="${EXTERNAL_EDGE_OUTPUT_JSONL:-./var/events/external_candidates.jsonl}"
 
 # ---------------------------------------------------------------------------
 # Kill switch — abort silently when the file exists
@@ -148,6 +151,54 @@ run_agent "shadow_live" \
 run_agent "drawdown_guard" \
     python3 agents/drawdown_guard.py \
         --store ./var/events.jsonl
+
+# ---------------------------------------------------------------------------
+# External edge candidates (optional, shadow-only chain)
+# Default disabled to preserve current pipeline behavior.
+# ---------------------------------------------------------------------------
+if [[ "${EXTERNAL_EDGE_CANDIDATES_ENABLED}" == "1" ]]; then
+    SLOT_ARGS=()
+    COLLECTOR_ARGS=()
+    SIGNAL_ARGS=()
+    SHADOW_ARGS=()
+    SCORECARD_ARGS=()
+    if [[ "${EXTERNAL_EDGE_MOCK_MODE}" == "1" ]]; then
+        SLOT_ARGS+=(--dry-run)
+        COLLECTOR_ARGS+=(--mock --dry-run)
+        SIGNAL_ARGS+=(--dry-run)
+        SHADOW_ARGS+=(--dry-run)
+        SCORECARD_ARGS+=(--dry-run)
+    fi
+
+    run_agent "external_slot_discovery_candidate" \
+        python3 agents/market_slot_discovery_candidate.py \
+            --output-jsonl "${EXTERNAL_EDGE_OUTPUT_JSONL}" \
+            "${SLOT_ARGS[@]}"
+
+    run_agent "external_research_collector_candidate" \
+        python3 agents/research_collector_candidate.py \
+            --input-slots-jsonl "${EXTERNAL_EDGE_OUTPUT_JSONL}" \
+            --output-jsonl "${EXTERNAL_EDGE_OUTPUT_JSONL}" \
+            "${COLLECTOR_ARGS[@]}"
+
+    run_agent "external_oracle_lag_signal_candidate" \
+        python3 agents/oracle_lag_signal_candidate.py \
+            --input-jsonl "${EXTERNAL_EDGE_OUTPUT_JSONL}" \
+            --output-jsonl "${EXTERNAL_EDGE_OUTPUT_JSONL}" \
+            "${SIGNAL_ARGS[@]}"
+
+    run_agent "external_shadow_execution_simulator" \
+        python3 agents/shadow_execution_simulator.py \
+            --input-jsonl "${EXTERNAL_EDGE_OUTPUT_JSONL}" \
+            --output-jsonl "${EXTERNAL_EDGE_OUTPUT_JSONL}" \
+            "${SHADOW_ARGS[@]}"
+
+    run_agent "external_candidate_scorecard" \
+        python3 agents/external_candidate_scorecard.py \
+            --input-jsonl "${EXTERNAL_EDGE_OUTPUT_JSONL}" \
+            --output-jsonl "${EXTERNAL_EDGE_OUTPUT_JSONL}" \
+            "${SCORECARD_ARGS[@]}"
+fi
 
 # Live Gateway — descomentar post-migración V2
 # run_agent "live_gateway" python3 agents/live_gateway.py --store ./var/events.jsonl

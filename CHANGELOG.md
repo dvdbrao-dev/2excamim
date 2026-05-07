@@ -2,6 +2,21 @@
 
 ## 2026-05-07
 
+### chore: wire external candidate pipeline
+- Added optional external-edge controls to `scripts/run_pipeline.sh`:
+  - `EXTERNAL_EDGE_CANDIDATES_ENABLED` (default `0`)
+  - `EXTERNAL_EDGE_MOCK_MODE` (default `1`)
+  - `EXTERNAL_EDGE_OUTPUT_JSONL` (default `./var/events/external_candidates.jsonl`)
+- Wired external candidate stages behind opt-in flag in safe order:
+  - `market_slot_discovery_candidate`
+  - `research_collector_candidate`
+  - `oracle_lag_signal_candidate`
+  - `shadow_execution_simulator`
+  - `external_candidate_scorecard`
+- Added `scripts/run_external_edge_candidates.sh` as dedicated runner for the full chain.
+- Added configuration docs in `docs/config/external_edge_candidates.md`.
+- Updated `README.md` and `ROADMAP.md` with opt-in execution guidance.
+
 ### feat: add offline backtest harness for external candidates
 - Added `agents/backtest_external_candidate.py` for deterministic offline replay of external-candidate data.
 - Emits:

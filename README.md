@@ -114,6 +114,28 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 bash scripts/run_pipeline.sh
 ```
 
+### Pipeline por defecto vs external candidates
+- Por defecto, el pipeline principal no cambia: `EXTERNAL_EDGE_CANDIDATES_ENABLED=0`.
+- Para habilitar la cadena externa en modo seguro/mock:
+
+```bash
+EXTERNAL_EDGE_CANDIDATES_ENABLED=1 EXTERNAL_EDGE_MOCK_MODE=1 bash scripts/run_pipeline.sh
+```
+
+- Para ejecutar solo la cadena externa (sin backtest):
+
+```bash
+EXTERNAL_EDGE_MOCK_MODE=1 bash scripts/run_external_edge_candidates.sh
+```
+
+- Para deshabilitar explícitamente los externos:
+
+```bash
+EXTERNAL_EDGE_CANDIDATES_ENABLED=0 bash scripts/run_pipeline.sh
+```
+
+Ver configuración detallada en `docs/config/external_edge_candidates.md`.
+
 ## Replay y medición mínima
 
 ### Replay/backtest mínimo (histórico de eventos)
