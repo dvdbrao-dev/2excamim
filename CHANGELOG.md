@@ -2,6 +2,16 @@
 
 ## 2026-05-07
 
+### feat: add conservative shadow execution simulator
+- Added `agents/shadow_execution_simulator.py` to transform `candidate_signal.scored` into:
+  - `shadow_fill.simulated`
+  - `strategy_round.scored`
+- Added conservative fee/slippage/fill-probability assumptions with pure helper functions.
+- Added tests in `tests/test_shadow_execution_simulator.py`.
+- Added optional launcher `scripts/run_shadow_execution_simulator.sh`.
+- Added docs `docs/agents/shadow_execution_simulator.md`.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md`.
+
 ### feat: add oracle lag signal candidate
 - Added `agents/oracle_lag_signal_candidate.py` (deterministic, shadow-only scorer).
 - Reads `market_snapshot.observed` and emits:

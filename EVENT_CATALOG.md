@@ -122,6 +122,22 @@ execution and must remain within paper/shadow governance boundaries.
 - `strategy_version`
 - governance safety markers (`governance_state=candidate`, `promoted=false`, `executable=false`)
 
+`shadow_fill.simulated` candidate payload conventions:
+- `strategy_version`, `signal_event_id`, `asset`, `window`, `side`
+- `limit_price`, `simulated_fill_price`
+- `notional_usdc`, `size`
+- `fee_usdc`, `slippage_usdc`
+- `latency_ms`
+- `fill_probability_estimate`, `fill_assumption`
+- `rejected`, `reject_reason`
+
+`strategy_round.scored` candidate payload conventions:
+- `strategy_version`, `signal_event_id`, `fill_event_id`
+- `outcome_known`, `resolved_side`
+- `gross_pnl_usdc`, `net_pnl_usdc`
+- `max_adverse_excursion`
+- `notes`
+
 ### Derived readiness semantics
 
 - Readiness and lifecycle are derived by query-time interpretation of the current event log.

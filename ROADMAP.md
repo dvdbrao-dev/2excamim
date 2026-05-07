@@ -350,6 +350,7 @@ Estado: planificado (candidate/shadow-first, sin implementación de agentes en e
 - Ejecutar en modo shadow/paper con scorecard explícito.
 - Medir precisión, estabilidad, drawdown proxy y sensibilidad a costos.
 - No habilitar live execution en esta fase.
+- Estado: en progreso (`agents/shadow_execution_simulator.py` con fill assumptions conservadores y round scoring).
 
 ### Phase 5: offline backtest harness
 - Consolidar harness offline para replay/backtest de candidatos externos.

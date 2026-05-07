@@ -88,6 +88,12 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Salida: `oracle_lag.observed` + `candidate_signal.scored` en modo shadow-only no ejecutable.
 - Operación opcional: `bash scripts/run_oracle_lag_signal_candidate.sh`.
 
+### Shadow Execution Simulator (Phase 4)
+- Agente: `agents/shadow_execution_simulator.py`
+- Rol: convertir `candidate_signal.scored` en `shadow_fill.simulated` y `strategy_round.scored` sin órdenes reales.
+- Modelo conservador: fee, slippage, latencia y probabilidad de fill explícita.
+- Operación opcional: `bash scripts/run_shadow_execution_simulator.sh`.
+
 ## Arranque rápido
 ```bash
 bash scripts/run_pipeline.sh
