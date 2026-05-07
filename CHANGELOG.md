@@ -2,6 +2,15 @@
 
 ## 2026-05-07
 
+### feat: add external candidate reporting
+- Added `agents/external_candidate_report.py` to generate markdown observability reports from external candidate JSONL events.
+- Report coverage includes per-strategy, per-asset/window, and per-run views.
+- Added sections for summary, signal counts, rejection reasons, fill assumptions, PnL, feed health, data gaps, governance status, and next action.
+- Added optional launcher `scripts/generate_external_candidate_report.sh`.
+- Added tests in `tests/test_external_candidate_report.py`.
+- Added docs in `docs/reports/external_candidate_reports.md`.
+- Updated `README.md` and `ROADMAP.md`.
+
 ### chore: wire external candidate pipeline
 - Added optional external-edge controls to `scripts/run_pipeline.sh`:
   - `EXTERNAL_EDGE_CANDIDATES_ENABLED` (default `0`)

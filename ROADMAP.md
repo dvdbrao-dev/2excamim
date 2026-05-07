@@ -352,6 +352,7 @@ Estado: planificado (candidate/shadow-first, sin implementación de agentes en e
 - No habilitar live execution en esta fase.
 - Estado: en progreso (`agents/shadow_execution_simulator.py` con fill assumptions conservadores y round scoring).
 - Estado scorecard externo: en progreso (`agents/external_candidate_scorecard.py` con evaluación candidate/promoted/frozen/rejected y promoción solo sugerida).
+- Observabilidad/reporting externo: en progreso (`agents/external_candidate_report.py`) con reportes Markdown por estrategia, asset/window y run en `reports/external_candidates/`.
 - Integración operacional opcional: en progreso (`scripts/run_pipeline.sh` + `scripts/run_external_edge_candidates.sh`), desactivada por defecto con `EXTERNAL_EDGE_CANDIDATES_ENABLED=0` y modo seguro default `EXTERNAL_EDGE_MOCK_MODE=1`.
 
 ### Phase 5: offline backtest harness

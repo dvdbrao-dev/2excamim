@@ -109,6 +109,13 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
   - `reports/external_candidates/oracle_lag_v1_backtest.md`
 - Operación opcional: `bash scripts/run_external_candidate_backtest.sh`.
 
+### External Candidate Reporting
+- Agente: `agents/external_candidate_report.py`
+- Rol: generar observabilidad Markdown por estrategia, asset/window y run para candidatos externos.
+- Salida por defecto: `reports/external_candidates/external_candidate_report_<RUN_ID>.md`.
+- Operación opcional: `bash scripts/generate_external_candidate_report.sh`.
+- Documentación: `docs/reports/external_candidate_reports.md`.
+
 ## Arranque rápido
 ```bash
 bash scripts/run_pipeline.sh
