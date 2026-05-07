@@ -1,0 +1,118 @@
+# Changelog
+
+## 2026-05-07
+
+### docs: summarize external edge candidates v1
+- Added final PR-style summary at `docs/research/external_edge_candidates_v1_final_summary.md`.
+- Documented branch scope, event types, scripts, tests, mock/dry-run execution, no-live boundaries, limitations, and next milestones.
+- Added summary pointer in `README.md`.
+- Updated `ROADMAP.md` external candidate phases to reflect implemented status and separated next milestones.
+
+### chore: harden external candidate tooling
+- Fixed deterministic staleness evaluation in `agents/oracle_lag_signal_candidate.py` (uses replay/eval timestamp instead of wall clock) to avoid false stale rejections in offline/test workflows.
+- Added cross-links across `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md` for external candidate docs.
+- Added developer guide `docs/development/external_candidate_dev_guide.md` with event envelope, test, docs, no-live policy, and promotion checklist requirements.
+
+### feat: add research-only cross venue matcher skeleton
+- Added `agents/cross_venue_matcher_candidate.py` for deterministic Polymarket/Kalshi market-match scoring.
+- Added event type `cross_venue.market_match_scored` to external candidate event registry.
+- Added tests in `tests/test_cross_venue_matcher_candidate.py` for exact match and key rejection cases.
+- Added docs `docs/research/cross_venue_market_matching.md` with explicit “Matching is not edge” guidance.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md`.
+
+### feat: add external candidate reporting
+- Added `agents/external_candidate_report.py` to generate markdown observability reports from external candidate JSONL events.
+- Report coverage includes per-strategy, per-asset/window, and per-run views.
+- Added sections for summary, signal counts, rejection reasons, fill assumptions, PnL, feed health, data gaps, governance status, and next action.
+- Added optional launcher `scripts/generate_external_candidate_report.sh`.
+- Added tests in `tests/test_external_candidate_report.py`.
+- Added docs in `docs/reports/external_candidate_reports.md`.
+- Updated `README.md` and `ROADMAP.md`.
+
+### chore: wire external candidate pipeline
+- Added optional external-edge controls to `scripts/run_pipeline.sh`:
+  - `EXTERNAL_EDGE_CANDIDATES_ENABLED` (default `0`)
+  - `EXTERNAL_EDGE_MOCK_MODE` (default `1`)
+  - `EXTERNAL_EDGE_OUTPUT_JSONL` (default `./var/events/external_candidates.jsonl`)
+- Wired external candidate stages behind opt-in flag in safe order:
+  - `market_slot_discovery_candidate`
+  - `research_collector_candidate`
+  - `oracle_lag_signal_candidate`
+  - `shadow_execution_simulator`
+  - `external_candidate_scorecard`
+- Added `scripts/run_external_edge_candidates.sh` as dedicated runner for the full chain.
+- Added configuration docs in `docs/config/external_edge_candidates.md`.
+- Updated `README.md` and `ROADMAP.md` with opt-in execution guidance.
+
+### feat: add offline backtest harness for external candidates
+- Added `agents/backtest_external_candidate.py` for deterministic offline replay of external-candidate data.
+- Emits:
+  - `backtest.run_started`
+  - `candidate_signal.scored`
+  - `shadow_fill.simulated`
+  - `strategy_round.scored`
+  - `candidate_strategy.evaluated`
+  - `backtest.run_completed`
+- Added markdown report generation and standalone backtest event log.
+- Added tests `tests/test_backtest_external_candidate.py`.
+- Added docs `docs/backtesting/external_candidate_backtest.md`.
+- Added launcher `scripts/run_external_candidate_backtest.sh`.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md`.
+
+### feat: add external candidate scorecard governance
+- Added `agents/external_candidate_scorecard.py` to aggregate external candidate metrics and evaluate governance state.
+- Emits `candidate_strategy.evaluated`.
+- Includes conservative default thresholds and no auto-promotion policy (promotion only suggested).
+- Added tests in `tests/test_external_candidate_scorecard.py`.
+- Added docs `docs/agents/external_candidate_scorecard.md`.
+- Added optional launcher `scripts/run_external_candidate_scorecard.sh`.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md`.
+
+### feat: add conservative shadow execution simulator
+- Added `agents/shadow_execution_simulator.py` to transform `candidate_signal.scored` into:
+  - `shadow_fill.simulated`
+  - `strategy_round.scored`
+- Added conservative fee/slippage/fill-probability assumptions with pure helper functions.
+- Added tests in `tests/test_shadow_execution_simulator.py`.
+- Added optional launcher `scripts/run_shadow_execution_simulator.sh`.
+- Added docs `docs/agents/shadow_execution_simulator.md`.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md`.
+
+### feat: add oracle lag signal candidate
+- Added `agents/oracle_lag_signal_candidate.py` (deterministic, shadow-only scorer).
+- Reads `market_snapshot.observed` and emits:
+  - `oracle_lag.observed`
+  - `candidate_signal.scored`
+- Added pure scoring helpers and conservative hard filters (stale, spread, price band, slot timing, data sufficiency).
+- Added tests in `tests/test_oracle_lag_signal_candidate.py`.
+- Added optional launcher `scripts/run_oracle_lag_signal_candidate.sh`.
+- Added docs in `docs/agents/oracle_lag_signal_candidate.md`.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md`.
+
+### feat: add research snapshot collector candidate
+- Added `agents/research_collector_candidate.py` with modular adapters:
+  - `SpotPriceAdapter`
+  - `OraclePriceAdapter`
+  - `OrderBookAdapter`
+  - slot JSONL input reader (`market_slot.discovered`)
+- Added pure feature helpers for spread/mid/depth/imbalance/spot-delta/oracle-spot-delta.
+- Added tests in `tests/test_research_collector_candidate.py`.
+- Added optional launcher `scripts/run_research_collector_candidate.sh`.
+- Added docs in `docs/agents/research_collector_candidate.md`.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md`.
+
+### feat: add market slot discovery candidate
+- Added `agents/market_slot_discovery_candidate.py` for deterministic UTC slot discovery (BTC/ETH/SOL, 5m/15m).
+- Added optional script `scripts/run_slot_discovery_candidate.sh` (not mandatory in core pipeline).
+- Added tests `tests/test_market_slot_discovery_candidate.py`.
+- Added docs `docs/agents/slot_discovery_candidate.md`.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md` for Phase 1 slot-discovery scope.
+
+### feat: add external candidate event envelope
+- Added shared Python event envelope utility at `agents/core/event_envelope.py`.
+- Added strict required-field validator for external-candidate JSONL events.
+- Added deterministic helpers for timestamp/idempotency/event_id/aggregate/provenance.
+- Added idempotent JSONL append integration via existing `append_event_idempotent` store path.
+- Added event fixtures at `examples/events/external_candidate_events_v1.jsonl`.
+- Added tests in `tests/test_event_envelope.py`.
+- Updated `EVENT_CATALOG.md`, `README.md`, and `ROADMAP.md` for Phase 0 status and event registry.

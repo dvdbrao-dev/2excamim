@@ -14,6 +14,19 @@ It only covers the existing event set:
 - `order.submitted`
 - `fill.received`
 
+For external-derived candidate research, this catalog also defines the pre-contract
+event envelope and the initial event-type registry used by Python candidate agents.
+
+External candidate agent references:
+- `docs/agents/slot_discovery_candidate.md`
+- `docs/agents/research_collector_candidate.md`
+- `docs/agents/oracle_lag_signal_candidate.md`
+- `docs/agents/shadow_execution_simulator.md`
+- `docs/agents/external_candidate_scorecard.md`
+- `docs/reports/external_candidate_reports.md`
+- `docs/backtesting/external_candidate_backtest.md`
+- `docs/research/cross_venue_market_matching.md`
+
 ## Cross-Cutting Rules v1
 
 ### Payload vs linkage
@@ -33,6 +46,8 @@ It only covers the existing event set:
   `fill_id`, `confirmed_by`, and `venue` must not be blank.
 - Any field contributing to an idempotency key must not contain `:`.
 - `correlation_id` is optional but, when present, must not be blank.
+- For externally-derived candidates, producers should also expose a stable `aggregate_key` in their
+  pre-contract envelope so the Rust boundary can map aggregate lineage deterministically.
 
 ### Minimum timestamp semantics
 
@@ -50,6 +65,122 @@ It only covers the existing event set:
 - Replays with the same idempotency key but contradictory contract content are invalid.
 - Replays with the same idempotency key and contract-equivalent content are tolerated as duplicates.
 - Consumers must treat event processing as at-least-once and be safe under duplicate delivery.
+- External candidate producers must keep `idempotency_key` stable across retries for the same
+  semantic fact before Rust translation.
+
+### External candidate pre-contract envelope
+
+Before translation into typed Rust events, candidate/shadow research components should emit a
+pre-contract envelope with:
+- `event_type`
+- `event_id`
+- `timestamp`
+- `idempotency_key`
+- `aggregate_key`
+- `provenance`
+- `payload`
+
+This envelope does not replace typed contracts below; it standardizes ingestion boundaries for
+externally-derived research outputs.
+
+### External candidate initial event types (v1)
+
+Allowed `event_type` values for the initial external-candidate program:
+- `external_repo.audit_recorded`
+- `market_slot.discovered`
+- `market_snapshot.observed`
+- `oracle_lag.observed`
+- `candidate_signal.scored`
+- `shadow_fill.simulated`
+- `strategy_round.scored`
+- `candidate_strategy.evaluated`
+- `data_gap.detected`
+- `feed_health.checked`
+- `cross_venue.market_match_scored`
+
+These are candidate/shadow/research-oriented signals and observations. They do not imply live
+execution and must remain within paper/shadow governance boundaries.
+
+`market_slot.discovered` candidate payload conventions:
+- `asset` (`BTC|ETH|SOL` in v1 scope)
+- `window` (`5m|15m` in v1 scope)
+- `slot_start` (UTC ISO-8601)
+- `slot_end` (UTC ISO-8601)
+- `candidate_slug` (heuristic candidate string)
+- `confidence` (heuristic confidence, conservative)
+- `discovery_method` (e.g. `deterministic_slug_heuristic_v1`)
+- `confirmed` (boolean; default false when no network confirmation)
+- `source` (`slot_discovery_candidate`)
+
+`market_snapshot.observed` candidate payload conventions:
+- `asset`, `window`, `slot_start`, `slot_end`, `market_slug`
+- `spot_price`
+- `oracle_price` (nullable)
+- `orderbook.best_bid`, `orderbook.best_ask`, `orderbook.mid_price`, `orderbook.spread_bps`
+- `orderbook.depth_top_n`, `orderbook.imbalance_top_n`
+- `features.spot_delta_bps`, `features.oracle_spot_delta_bps`
+- `observation_latency_ms`
+- `source_quality`
+
+`candidate_signal.scored` candidate payload conventions:
+- `asset`, `window`, `slot_start`, `slot_end`, `market_slug`
+- `side` (`UP|DOWN`)
+- `spot_delta_bps`, `oracle_delta_bps` (nullable), `book_mid_delta_bps`, `lag_gap_bps`
+- `best_bid`, `best_ask`, `spread_bps`
+- `confidence` (`0..1`)
+- `raw_edge_bps`
+- `rejected` (boolean), `reject_reason` (nullable string)
+- `strategy_version`
+- governance safety markers (`governance_state=candidate`, `promoted=false`, `executable=false`)
+
+`shadow_fill.simulated` candidate payload conventions:
+- `strategy_version`, `signal_event_id`, `asset`, `window`, `side`
+- `limit_price`, `simulated_fill_price`
+- `notional_usdc`, `size`
+- `fee_usdc`, `slippage_usdc`
+- `latency_ms`
+- `fill_probability_estimate`, `fill_assumption`
+- `rejected`, `reject_reason`
+
+`strategy_round.scored` candidate payload conventions:
+- `strategy_version`, `signal_event_id`, `fill_event_id`
+- `outcome_known`, `resolved_side`
+- `gross_pnl_usdc`, `net_pnl_usdc`
+- `max_adverse_excursion`
+- `notes`
+
+`candidate_strategy.evaluated` payload conventions:
+- `strategy_version`
+- core metrics:
+  - `signal_count`, `rejected_signal_count`, `rejection_rate`
+  - `shadow_fill_count`, `shadow_fill_rate`
+  - `resolved_round_count`
+  - `gross_pnl_usdc`, `net_pnl_usdc`
+  - `avg_net_edge_bps`, `median_net_edge_bps`
+  - `max_drawdown_usdc`, `win_rate`, `expectancy_usdc`
+  - `avg_fee_usdc`, `avg_slippage_usdc`, `avg_latency_ms`
+  - `data_gap_count`, `stale_feed_count`
+- governance outputs:
+  - `status` (effective)
+  - `suggested_status` (advisory)
+- `auto_promoted` (always `false` by default)
+- `reason`
+- `thresholds` snapshot
+
+
+`cross_venue.market_match_scored` payload conventions:
+- `polymarket_market_id`, `kalshi_market_id`
+- `polymarket_title`, `kalshi_title`
+- `asset`, `window`, `strike`
+- `confidence`
+- `reasons`
+- `rejected`, `reject_reason`
+
+Backtest harness event types:
+- `backtest.run_started`
+- `backtest.run_completed`
+
+Backtest events are offline replay artifacts and must never trigger live execution paths.
 
 ### Derived readiness semantics
 

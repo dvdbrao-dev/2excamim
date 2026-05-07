@@ -318,6 +318,69 @@ Diferido / no prioritario:
 
 Estado: intencionalmente diferido.
 
+## 12. External Edge Candidates V1
+
+Estado: implementado en modo candidate/shadow-first (research-only, no live).
+
+Referencias rápidas:
+- Plan: `docs/research/external_edge_candidates_v1.md`
+- Resumen final: `docs/research/external_edge_candidates_v1_final_summary.md`
+- ADR: `docs/adr/ADR-externally-derived-edge-candidates-v1.md`
+- Agents docs:
+  - `docs/agents/slot_discovery_candidate.md`
+  - `docs/agents/research_collector_candidate.md`
+  - `docs/agents/oracle_lag_signal_candidate.md`
+  - `docs/agents/shadow_execution_simulator.md`
+  - `docs/agents/external_candidate_scorecard.md`
+  - `docs/reports/external_candidate_reports.md`
+  - `docs/backtesting/external_candidate_backtest.md`
+  - `docs/research/cross_venue_market_matching.md`
+
+### Phase 0: event contract and docs
+- Formalizar frontera documental para edge externo derivado.
+- Exigir envelope mínimo por evento (`event_type`, `event_id`, `timestamp`, `idempotency_key`, `aggregate_key`, `provenance`, `payload`).
+- Mantener Rust como única capa contractual de persistencia/event-sourcing.
+- Estado: completada (`agents/core/event_envelope.py` + tests + fixtures).
+
+### Phase 1: slot discovery candidate
+- Crear candidato de discovery determinista para slots cripto 5m/15m.
+- Base de investigación: patrones de `Polymarket-Market-Finder` sin importar repo completo.
+- Salida prevista: universo de mercados candidato trazable y reproducible.
+- Estado: completada (`agents/market_slot_discovery_candidate.py` + script opcional + tests).
+
+### Phase 2: research snapshot collector
+- Construir collector research-only de snapshots (oracle/spot/orderbook).
+- Base de investigación: `polyrec` como referencia de harness.
+- Persistencia append-only en JSONL, sin rediseñar store actual.
+- Estado: completada (`agents/research_collector_candidate.py` con adapters mock, features puros y eventos de health/gap).
+
+### Phase 3: oracle lag candidate scorer
+- Evaluar hipótesis de lag entre oracle y precio spot.
+- Base de investigación: `gengar_polymarket_bot` como señal de hipótesis, no como bot ejecutable.
+- Producir scoring candidato auditable para promoción posterior.
+- Estado: completada (`agents/oracle_lag_signal_candidate.py` con scoring determinista + filtros conservadores).
+
+### Phase 4: shadow execution and scorecard
+- Ejecutar en modo shadow/paper con scorecard explícito.
+- Medir precisión, estabilidad, drawdown proxy y sensibilidad a costos.
+- No habilitar live execution en esta fase.
+- Estado: completada (`agents/shadow_execution_simulator.py` con fill assumptions conservadores y round scoring).
+- Estado scorecard externo: completada (`agents/external_candidate_scorecard.py` con evaluación candidate/promoted/frozen/rejected y promoción solo sugerida).
+- Observabilidad/reporting externo: completada (`agents/external_candidate_report.py`) con reportes Markdown por estrategia, asset/window y run en `reports/external_candidates/`.
+- Integración operacional opcional: completada (`scripts/run_pipeline.sh` + `scripts/run_external_edge_candidates.sh`), desactivada por defecto con `EXTERNAL_EDGE_CANDIDATES_ENABLED=0` y modo seguro default `EXTERNAL_EDGE_MOCK_MODE=1`.
+
+### Phase 5: offline backtest harness
+- Consolidar harness offline para replay/backtest de candidatos externos.
+- Reusar pipeline y gobernanza actual (candidate/promoted/frozen/rejected).
+- Mantener reproducibilidad e idempotencia como requisito central.
+- Estado: completada (`agents/backtest_external_candidate.py` + reporte markdown + event log de backtest).
+
+### Phase 6: optional cross-venue matcher research
+- Investigación opcional offline de matching Kalshi/Polymarket.
+- Sin integración operativa ni ejecución cross-venue.
+- Activar solo cuando fases 1-5 tengan evidencia suficiente.
+- Estado: completada como research-only (`agents/cross_venue_matcher_candidate.py`) con matching determinista/string/date/strike y salida `cross_venue.market_match_scored`.
+
 Incluye hoy:
 
 - Nada live.
@@ -325,6 +388,7 @@ Incluye hoy:
 
 Pendiente siguiente:
 
+- Mantener operación candidate/shadow con evidencia extendida antes de cualquier promoción.
 - Considerar live gateway solo si el paper loop demuestra estabilidad, trazabilidad y valor.
 - Antes de live, exigir:
   - readiness confiable

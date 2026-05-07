@@ -1,0 +1,29 @@
+{
+  "agent": "crypto_strategy_incubator",
+  "mode": "paper_shadow_only",
+  "timestamp": "2026-04-28T00:00:00Z",
+  "strategies": [
+    {
+      "strategy_id": "crypto_adx_ema_pullback_v1",
+      "agent_file": "agents/crypto_adx_ema_pullback_agent.py",
+      "status": "candidate",
+      "created_at": "2026-04-28T00:00:00Z",
+      "last_evaluated_at": null,
+      "promotion_count": 0,
+      "freeze_count": 0,
+      "rejection_reason": null,
+      "notes": "example registry entry"
+    },
+    {
+      "strategy_id": "crypto_volatility_breakout_v1",
+      "agent_file": "agents/crypto_volatility_breakout_agent.py",
+      "status": "candidate",
+      "created_at": "2026-04-28T00:00:00Z",
+      "last_evaluated_at": null,
+      "promotion_count": 0,
+      "freeze_count": 0,
+      "rejection_reason": null,
+      "notes": "example registry entry"
+    }
+  ]
+}

@@ -822,8 +822,22 @@ def build_veto_event(
     }
 
 
+LLM_KILL_FLAG = Path(__file__).resolve().parents[1] / "runtime" / "llm_killed.flag"
+
+
 def main() -> int:
     args = parse_args()
+
+    # Honor kill flag written by edge_validation_gauntlet — no-op if present
+    if LLM_KILL_FLAG.exists():
+        emit_json({
+            "actor": AGENT_ID,
+            "status": "no_op",
+            "reason": "llm_killed_flag_present",
+            "flag_path": str(LLM_KILL_FLAG),
+        })
+        return 0
+
     if args.max_signals < 0:
         raise SystemExit("--max-signals must be >= 0")
     if args.max_snapshot_age_seconds < 0:

@@ -1,0 +1,17 @@
+# Risk limits — pre-committed thresholds for drawdown guard and shadow live.
+# Modifying these requires a PR with documented rationale.
+schema_version: "v1"
+
+drawdown_guard:
+  shadow_dd_7d_kill_pct: 0.05      # 5% shadow rolling 7d DD → kill
+  paper_dd_7d_kill_pct: 0.08       # 8% paper rolling 7d DD → kill
+  dd_30d_permanent_kill_pct: 0.15  # 15% 30d DD → permanent kill
+  kill_switch_path: var/.kill_switch
+  kill_switch_permanent_path: var/.kill_switch.permanent
+  kill_reason_path: runtime/kill_switch_reason.json
+
+shadow_live:
+  enabled: true
+  polymarket_slippage_bps: 30     # 0.30% adverse slippage on Polymarket fills
+  crypto_slippage_bps: 5          # 0.05% slippage on crypto fills
+  fill_delay_ticks: 1             # fill on next tick after decision
