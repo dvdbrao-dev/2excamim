@@ -176,4 +176,18 @@ def test_dry_run_does_not_persist(tmp_path: Path) -> None:
 
     summary = run(_args(input_path, output_path, dry_run=True))
     assert summary["events_generated"] == 1
+    assert summary["events_persisted"] == 0
     assert not output_path.exists()
+
+
+def test_non_dry_run_persists_and_reports_one(tmp_path: Path) -> None:
+    input_path = tmp_path / "in.jsonl"
+    output_path = tmp_path / "out.jsonl"
+    _write(input_path, _build_dataset(70, favor="UP"))
+
+    summary = run(_args(input_path, output_path, dry_run=False))
+    assert summary["events_generated"] == 1
+    assert summary["events_persisted"] == 1
+    assert output_path.exists()
+    persisted = [r for r in load_jsonl(output_path) if r.get("event_type") == "candidate_signal.scored"]
+    assert len(persisted) == 1

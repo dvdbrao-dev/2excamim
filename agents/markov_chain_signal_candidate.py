@@ -363,6 +363,12 @@ def confidence(net_edge: float, samples: int) -> float:
     return round(edge_component * sample_component, 6)
 
 
+def _events_persisted_count(dry_run: bool, persisted: bool) -> int:
+    if dry_run:
+        return 0
+    return 1 if persisted else 0
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     rows = parse_snapshots(Path(args.input_jsonl), args.asset.upper(), args.window.lower())
     if not rows:
@@ -387,7 +393,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "source": SOURCE,
             "strategy_version": args.strategy_version,
             "events_generated": 1,
-            "events_persisted": 1 if persisted else 0,
+            "events_persisted": _events_persisted_count(bool(args.dry_run), persisted),
             "reject_reason": "missing_market_snapshots",
             "dry_run": bool(args.dry_run),
         }
@@ -426,7 +432,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "source": SOURCE,
             "strategy_version": args.strategy_version,
             "events_generated": 1,
-            "events_persisted": 1 if persisted else 0,
+            "events_persisted": _events_persisted_count(bool(args.dry_run), persisted),
             "reject_reason": "insufficient_snapshots",
             "dry_run": bool(args.dry_run),
         }
@@ -539,7 +545,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "source": SOURCE,
         "strategy_version": args.strategy_version,
         "events_generated": 1,
-        "events_persisted": 1 if persisted else 0,
+        "events_persisted": _events_persisted_count(bool(args.dry_run), persisted),
         "rejected": payload["rejected"],
         "reject_reason": payload["reject_reason"],
         "backoff_level": backoff_level,
