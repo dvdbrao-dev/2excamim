@@ -153,6 +153,8 @@ execution and must remain within paper/shadow governance boundaries.
 - `rejected` (boolean), `reject_reason` (nullable string)
 - `strategy_version`
 - governance safety markers (`governance_state=candidate`, `promoted=false`, `executable=false`)
+- Optional model-specific blocks allowed for candidate research (e.g. `model`, `pricing`, `edge`) as long as
+  standard fields remain present and no live-execution semantics are introduced.
 
 `shadow_fill.simulated` candidate payload conventions:
 - `strategy_version`, `signal_event_id`, `asset`, `window`, `side`

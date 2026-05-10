@@ -2,6 +2,21 @@
 
 ## 2026-05-10
 
+### feat: add Markov chain signal candidate
+- Added `agents/markov_chain_signal_candidate.py` (candidate/shadow-only):
+  - reads `market_snapshot.observed` by `asset/window`,
+  - reconstructs slot outcomes from spot open/close (`binance_reconstructed_v1`),
+  - builds state `(previous_outcome, momentum, volatility, book_skew)`,
+  - estimates transition probabilities with Beta/Laplace smoothing,
+  - applies hierarchical backoff (`full_state` -> `global_prior`),
+  - scores UP/DOWN net edge vs orderbook ask + configurable cost buffer,
+  - emits `candidate_signal.scored` with standard fields plus nested `model`, `pricing`, and `edge`,
+  - rejects conservatively on missing orderbook, low evidence, spread/depth/expiry/stale/edge gates,
+  - emits `data_gap.detected` when no snapshots are available.
+- Added optional safe runner `scripts/run_markov_chain_signal_candidate.sh`.
+- Added tests `tests/test_markov_chain_signal_candidate.py` covering smoothing, backoff, UP/DOWN scoring, rejection paths, envelope validity, and dry-run behavior.
+- Added docs `docs/agents/markov_chain_signal_candidate.md`.
+- Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md` for Markov candidate scope and constraints.
 ### fix: make Polymarket read-only HTTP client Cloudflare-compatible
 - Updated `agents/adapters/http_client.py` with host-aware default public headers for:
   - `gamma-api.polymarket.com`
