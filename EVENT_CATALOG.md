@@ -106,9 +106,12 @@ execution and must remain within paper/shadow governance boundaries.
 - `window` (`5m|15m` in v1 scope)
 - `slot_start` (UTC ISO-8601)
 - `slot_end` (UTC ISO-8601)
-- `candidate_slug` (heuristic candidate string)
-- `confidence` (heuristic confidence, conservative)
-- `discovery_method` (e.g. `deterministic_slug_heuristic_v1`)
+- `candidate_slug` (default: canonical `<asset>-updown-<window>-<unix_slot_start>`)
+- `legacy_candidate_slug` (nullable, compatibility only)
+- `slug_family` (`canonical_updown_unix_v1` default)
+- `slug_timestamp` (UNIX slot start; nullable in legacy mode)
+- `confidence` (higher for canonical family)
+- `discovery_method` (`canonical_updown_unix_v1` default; legacy mode explicit)
 - `confirmed` (boolean; default false when no network confirmation)
 - `source` (`slot_discovery_candidate`)
 
@@ -118,8 +121,9 @@ execution and must remain within paper/shadow governance boundaries.
 - `spot_price`
 - `oracle_price` (nullable)
 - `metadata.market_id`, `metadata.condition_id`, `metadata.token_ids`, `metadata.title`
+- `metadata.outcome_tokens[]` (`outcome`, `token_id`), `metadata.match_confidence`, `metadata.match_reason`
 - `orderbook.best_bid`, `orderbook.best_ask`, `orderbook.mid_price`, `orderbook.spread_bps`
-- `orderbook.depth_top_n`, `orderbook.imbalance_top_n`
+- `orderbook.depth_top_n`, `orderbook.imbalance_top_n`, `orderbook.books[]` por token/outcome con `raw_levels_summary`
 - `features.spot_delta_bps`, `features.oracle_spot_delta_bps`
 - `observation_latency_ms`
 - `source_quality` (`mock|read_only_spot_only|read_only_metadata|read_only_orderbook|partial`)
@@ -134,6 +138,9 @@ execution and must remain within paper/shadow governance boundaries.
 - `data_mode`
 - `successful_assets`
 - `failed_assets`
+- `metadata_found_count`
+- `orderbook_observed_count`
+- `data_gap_count`
 - `adapter_errors` (nested per source and per asset/slug, e.g. `binance_spot.BTC`)
 
 `candidate_signal.scored` candidate payload conventions:

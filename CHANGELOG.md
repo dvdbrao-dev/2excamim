@@ -17,6 +17,54 @@
 - Added tests `tests/test_markov_chain_signal_candidate.py` covering smoothing, backoff, UP/DOWN scoring, rejection paths, envelope validity, and dry-run behavior.
 - Added docs `docs/agents/markov_chain_signal_candidate.md`.
 - Updated `README.md`, `ROADMAP.md`, and `EVENT_CATALOG.md` for Markov candidate scope and constraints.
+### fix: make Polymarket read-only HTTP client Cloudflare-compatible
+- Updated `agents/adapters/http_client.py` with host-aware default public headers for:
+  - `gamma-api.polymarket.com`
+  - `clob.polymarket.com`
+- Read-only requests to those hosts now include:
+  - `User-Agent: Mozilla/5.0`
+  - `Accept: application/json`
+- Kept headers configurable/overrideable per request and did not add auth headers.
+- Kept non-Polymarket behavior unchanged (Binance requests do not get Polymarket `User-Agent` injection).
+- Added adapter tests to validate host header injection, override behavior, and no unintended Binance header changes.
+
+### fix: use canonical Polymarket updown slot slugs
+- Switched `market_slot_discovery_candidate` default slug generation to canonical family:
+  - `<asset>-updown-<window>-<unix_slot_start>` for BTC/ETH/SOL and 5m/15m.
+- Added `slug_family`, `slug_timestamp`, `legacy_candidate_slug`, and canonical `discovery_method` in `market_slot.discovered` payload.
+- Preserved legacy heuristic slug behind explicit `--slug-mode legacy` (no longer default in read-only path).
+- Upgraded metadata adapter diagnostics:
+  - exact slug 404 is preserved (`http_404` / `slug_not_found`) and no longer masked by fallback errors,
+  - fallback errors are emitted separately via `adapter_errors` (`exact_slug`, `fallback_search`),
+  - canonical slug parsing and nearby timestamp fallback reasoning (`nearby_canonical_slug_minus_one`, `nearby_canonical_slug_plus_one`).
+- Updated smoke script output with canonical slugs, counters, adapter errors, and explicit `STRICT` pass line.
+- Added/updated tests for canonical slug generation and 404-vs-403 metadata diagnosis.
+
+### feat: add Polymarket read-only orderbook collection
+- Upgraded `PolymarketMetadataAdapter` to resolve richer market metadata from Gamma:
+  - market/condition IDs, question, active/closed/resolved flags,
+  - outcome labels + `token_id` mapping,
+  - end/resolution timestamps,
+  - conservative fallback matching with `match_confidence` and `match_reason`,
+  - structured metadata errors for not-found/ambiguous/low-confidence scenarios.
+- Upgraded `PolymarketOrderBookAdapter` to fetch public CLOB books per token outcome with normalized fields:
+  - `token_id`, `outcome`, `best_bid`, `best_ask`, `mid_price`, `spread_bps`,
+  - `depth_top_n`, `imbalance_top_n`, `raw_levels_summary`, `source_quality`, latency,
+  - structured errors (`http_404`, `timeout`, `dns`, `parse_error`, etc.).
+- Extended `research_collector_candidate` read-only mode:
+  - emits per-slot `data_gap.detected` for metadata/orderbook failures,
+  - enriches `market_snapshot.observed` metadata/orderbook payloads,
+  - reports `metadata_found_count`, `orderbook_observed_count`, `data_gap_count` in `feed_health.checked`.
+- Added `scripts/run_polymarket_orderbook_smoke.sh`:
+  - read-only by default, no credentials, supports `ASSETS`, `WINDOWS`, `STRICT=1`,
+  - writes to `var/events/polymarket_orderbook_smoke.jsonl`,
+  - prints event counters + last feed health summary and fails strict mode on required conditions.
+- Added tests:
+  - `tests/test_polymarket_read_only_adapters.py`
+  - read-only collector success/failure coverage in `tests/test_research_collector_candidate.py`.
+- Added docs:
+  - `docs/data_sources/polymarket_read_only_orderbook.md`
+  - updates in `README.md`, `ROADMAP.md`, `EVENT_CATALOG.md`.
 
 ## 2026-05-07
 

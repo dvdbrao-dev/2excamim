@@ -22,7 +22,7 @@ def _write_slots(path: Path) -> None:
             "window": "5m",
             "slot_start": "2026-05-07T18:00:00Z",
             "slot_end": "2026-05-07T18:05:00Z",
-            "candidate_slug": "btc-up-or-down-may-07-1800-utc-5m",
+            "candidate_slug": "btc-updown-5m-1778176800",
         },
     }
     path.write_text(json.dumps(event) + "\n", encoding="utf-8")
@@ -141,3 +141,155 @@ def test_dry_run_behavior(tmp_path: Path) -> None:
     summary = run(args)
     assert summary["events_generated"] >= 1
     assert not out.exists()
+
+
+def test_read_only_with_orderbook_fields(monkeypatch, tmp_path: Path) -> None:
+    slots = tmp_path / "slots.jsonl"
+    out = tmp_path / "external_candidates.jsonl"
+    _write_slots(slots)
+
+    from agents.adapters.binance_spot_adapter import SpotPriceResult
+    from agents.adapters.polymarket_metadata_adapter import MetadataResult
+    from agents.adapters.polymarket_orderbook_adapter import OrderBookResult
+
+    monkeypatch.setattr(
+        "agents.adapters.binance_spot_adapter.BinanceSpotAdapter.observe",
+        lambda self, asset: SpotPriceResult(100000.0, "BTCUSDT", 5, None),
+    )
+    monkeypatch.setattr(
+        "agents.adapters.polymarket_metadata_adapter.PolymarketMetadataAdapter.observe",
+        lambda self, slug: MetadataResult(
+            market_id="m1",
+            condition_id="c1",
+            question="BTC up/down",
+            active=True,
+            closed=False,
+            resolved=False,
+            outcome_tokens=[{"outcome": "YES", "token_id": "10"}],
+            end_date="2026-05-07T18:05:00Z",
+            resolution_date=None,
+            raw_source_summary="test",
+            match_confidence=1.0,
+            match_reason="exact_canonical_slug",
+            latency_ms=5,
+            error=None,
+            adapter_errors={},
+        ),
+    )
+    monkeypatch.setattr(
+        "agents.adapters.polymarket_orderbook_adapter.PolymarketOrderBookAdapter.observe",
+        lambda self, outcome_tokens: [
+            OrderBookResult(
+                token_id="10",
+                outcome="YES",
+                best_bid=0.48,
+                best_ask=0.50,
+                mid_price=0.49,
+                spread_bps=408.16,
+                depth_top_n={"n": 2.0, "bid": 1000.0, "ask": 900.0},
+                imbalance_top_n=0.0526,
+                raw_levels_summary={"bids": 1, "asks": 1},
+                source_quality="read_only_orderbook",
+                latency_ms=5,
+                error=None,
+            )
+        ],
+    )
+
+    args = Namespace(
+        input_slots_jsonl=str(slots),
+        output_jsonl=str(out),
+        assets="BTC",
+        windows="5m",
+        sample_count=1,
+        sample_interval_ms=1,
+        dry_run=False,
+        mock=False,
+        data_mode="read_only",
+        network_timeout_sec=1.0,
+        max_retries=0,
+        fail_soft=True,
+        polymarket_metadata_enabled=True,
+        polymarket_orderbook_enabled=True,
+    )
+    run(args)
+    rows = load_jsonl(out)
+    snap = [r for r in rows if r.get("event_type") == "market_snapshot.observed"][-1]["payload"]
+    assert snap["source_quality"] == "read_only_orderbook"
+    assert snap["orderbook"]["best_bid"] == 0.48
+    assert snap["orderbook"]["books"][0]["token_id"] == "10"
+
+
+def test_read_only_orderbook_missing_emits_data_gap(monkeypatch, tmp_path: Path) -> None:
+    slots = tmp_path / "slots.jsonl"
+    out = tmp_path / "external_candidates.jsonl"
+    _write_slots(slots)
+
+    from agents.adapters.binance_spot_adapter import SpotPriceResult
+    from agents.adapters.polymarket_metadata_adapter import MetadataResult
+    from agents.adapters.polymarket_orderbook_adapter import OrderBookResult
+
+    monkeypatch.setattr(
+        "agents.adapters.binance_spot_adapter.BinanceSpotAdapter.observe",
+        lambda self, asset: SpotPriceResult(100000.0, "BTCUSDT", 5, None),
+    )
+    monkeypatch.setattr(
+        "agents.adapters.polymarket_metadata_adapter.PolymarketMetadataAdapter.observe",
+        lambda self, slug: MetadataResult(
+            market_id="m1",
+            condition_id="c1",
+            question="BTC up/down",
+            active=True,
+            closed=False,
+            resolved=False,
+            outcome_tokens=[{"outcome": "YES", "token_id": "10"}],
+            end_date="2026-05-07T18:05:00Z",
+            resolution_date=None,
+            raw_source_summary="test",
+            match_confidence=1.0,
+            match_reason="exact_canonical_slug",
+            latency_ms=5,
+            error=None,
+            adapter_errors={},
+        ),
+    )
+    monkeypatch.setattr(
+        "agents.adapters.polymarket_orderbook_adapter.PolymarketOrderBookAdapter.observe",
+        lambda self, outcome_tokens: [
+            OrderBookResult(
+                token_id="10",
+                outcome="YES",
+                best_bid=None,
+                best_ask=None,
+                mid_price=None,
+                spread_bps=None,
+                depth_top_n=None,
+                imbalance_top_n=None,
+                raw_levels_summary={},
+                source_quality="missing",
+                latency_ms=5,
+                error="http_404",
+            )
+        ],
+    )
+
+    args = Namespace(
+        input_slots_jsonl=str(slots),
+        output_jsonl=str(out),
+        assets="BTC",
+        windows="5m",
+        sample_count=1,
+        sample_interval_ms=1,
+        dry_run=False,
+        mock=False,
+        data_mode="read_only",
+        network_timeout_sec=1.0,
+        max_retries=0,
+        fail_soft=True,
+        polymarket_metadata_enabled=True,
+        polymarket_orderbook_enabled=True,
+    )
+    run(args)
+    rows = load_jsonl(out)
+    gaps = [r for r in rows if r.get("event_type") == "data_gap.detected"]
+    assert any(g["payload"].get("gap_type") == "missing_polymarket_orderbook" for g in gaps)
