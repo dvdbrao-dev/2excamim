@@ -57,6 +57,7 @@ Pendiente siguiente:
 - Mantener la frontera Python -> Rust simple y audititable.
 - Evaluar cuándo una señal justifica materializar también `hypothesis.generated`.
 - Consolidar adapters `read_only` públicos (Binance spot activo; metadata/orderbook Polymarket best-effort).
+- Validar `markov_chain_v1` en walk-forward con disciplina de rechazo por spread/depth/staleness y sin auto-promoción.
 
 Diferido / no prioritario:
 

@@ -97,6 +97,15 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Salida: `oracle_lag.observed` + `candidate_signal.scored` en modo shadow-only no ejecutable.
 - Operación opcional: `bash scripts/run_oracle_lag_signal_candidate.sh`.
 
+### Markov Chain Signal Candidate (Phase 3B)
+- Agente: `agents/markov_chain_signal_candidate.py`
+- Rol: estimar `P(UP|state)` con cadena de Markov de orden 1 + smoothing + backoff jerárquico.
+- Usa snapshots `market_snapshot.observed` y reconstruye outcome por slot desde spot (binance).
+- Emite `candidate_signal.scored` con bloques `model`, `pricing` y `edge`.
+- Si falta orderbook requerido, rechaza (`orderbook_missing`) o emite `data_gap.detected` cuando no hay snapshots.
+- Operación opcional: `bash scripts/run_markov_chain_signal_candidate.sh`.
+- Documentación: `docs/agents/markov_chain_signal_candidate.md`.
+
 ### Shadow Execution Simulator (Phase 4)
 - Agente: `agents/shadow_execution_simulator.py`
 - Rol: convertir `candidate_signal.scored` en `shadow_fill.simulated` y `strategy_round.scored` sin órdenes reales.
