@@ -57,6 +57,8 @@ Pendiente siguiente:
 - Mantener la frontera Python -> Rust simple y audititable.
 - Evaluar cuándo una señal justifica materializar también `hypothesis.generated`.
 - Consolidar adapters `read_only` públicos (Binance spot activo; metadata/orderbook Polymarket best-effort).
+- Consolidar matching de slugs/tokens para maximizar `orderbook_observed_count` sin aceptar matches ambiguos.
+- Discovery de slots migrado a familia canónica `updown + unix slot`; mantener legacy solo para fixtures explícitos.
 
 Diferido / no prioritario:
 

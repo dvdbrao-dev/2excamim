@@ -32,6 +32,8 @@ SOURCE = "slot_discovery_candidate"
 DEFAULT_OUTPUT = Path("./var/events/external_candidates.jsonl")
 SUPPORTED_WINDOWS = {"5m": 5, "15m": 15}
 SUPPORTED_ASSETS = {"BTC", "ETH", "SOL"}
+CANONICAL_FAMILY = "canonical_updown_unix_v1"
+LEGACY_FAMILY = "deterministic_slug_heuristic_v1"
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,12 @@ def parse_args() -> argparse.Namespace:
         "--confirm-slugs",
         action="store_true",
         help="Optional best-effort confirmation mode. Never fails the process.",
+    )
+    parser.add_argument(
+        "--slug-mode",
+        choices=["canonical", "legacy"],
+        default="canonical",
+        help="Slug generation mode. canonical is default and recommended for read-only mode.",
     )
     return parser.parse_args()
 
@@ -89,18 +97,35 @@ def month_token(ts: datetime) -> str:
     return ts.strftime("%b").lower()
 
 
-def candidate_slug(slot: SlotWindow) -> tuple[str, float, str]:
+def _legacy_candidate_slug(slot: SlotWindow) -> tuple[str, float, str]:
     start = slot.slot_start
     # Heuristic only: intentionally conservative confidence.
     slug = (
         f"{slot.asset.lower()}-up-or-down-"
         f"{month_token(start)}-{start.day:02d}-{start:%H%M}-utc-{slot.window}"
     )
-    return slug, 0.35, "deterministic_slug_heuristic_v1"
+    return slug, 0.35, LEGACY_FAMILY
 
 
-def build_slot_event(slot: SlotWindow, now_ts: datetime) -> dict[str, Any]:
-    slug, confidence, method = candidate_slug(slot)
+def canonical_candidate_slug(slot: SlotWindow) -> tuple[str, int, float, str]:
+    unix_slot_start = int(slot.slot_start.timestamp())
+    slug = f"{slot.asset.lower()}-updown-{slot.window}-{unix_slot_start}"
+    return slug, unix_slot_start, 0.9, CANONICAL_FAMILY
+
+
+def build_slot_event(slot: SlotWindow, now_ts: datetime, slug_mode: str = "canonical") -> dict[str, Any]:
+    legacy_slug, _, _ = _legacy_candidate_slug(slot)
+    if slug_mode == "legacy":
+        slug = legacy_slug
+        confidence = 0.35
+        method = LEGACY_FAMILY
+        slug_family = LEGACY_FAMILY
+        slug_timestamp = None
+        legacy_candidate_slug = None
+    else:
+        slug, slug_timestamp, confidence, method = canonical_candidate_slug(slot)
+        slug_family = CANONICAL_FAMILY
+        legacy_candidate_slug = legacy_slug
     aggregate = build_aggregate_key("polymarket", slot.asset.lower(), slot.window)
     payload = {
         "asset": slot.asset,
@@ -108,6 +133,9 @@ def build_slot_event(slot: SlotWindow, now_ts: datetime) -> dict[str, Any]:
         "slot_start": slot.slot_start.isoformat().replace("+00:00", "Z"),
         "slot_end": slot.slot_end.isoformat().replace("+00:00", "Z"),
         "candidate_slug": slug,
+        "legacy_candidate_slug": legacy_candidate_slug,
+        "slug_family": slug_family,
+        "slug_timestamp": slug_timestamp,
         "confidence": confidence,
         "discovery_method": method,
         "confirmed": False,
@@ -119,7 +147,7 @@ def build_slot_event(slot: SlotWindow, now_ts: datetime) -> dict[str, Any]:
         aggregate_key=aggregate,
         payload=payload,
         provenance=build_provenance(AGENT_ID, "shadow-research", notes="candidate only; no trading"),
-        unique_components=[slot.asset, slot.window, payload["slot_start"], payload["candidate_slug"]],
+        unique_components=[slot.asset, slot.window, payload["slot_start"], payload["candidate_slug"], method],
         timestamp=payload["slot_start"],
     )
 
@@ -174,7 +202,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     for asset in assets:
         for window in windows:
             for slot in make_slots(now_ts, asset, window, args.lookahead_slots):
-                events.append(build_slot_event(slot, now_ts))
+                events.append(build_slot_event(slot, now_ts, slug_mode=args.slug_mode))
 
     if args.confirm_slugs:
         events.extend(

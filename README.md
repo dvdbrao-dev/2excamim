@@ -76,6 +76,8 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Rol: discovery determinista de slots esperados BTC/ETH/SOL en ventanas 5m/15m.
 - Salida: eventos `market_slot.discovered` en `./var/events/external_candidates.jsonl` (por defecto).
 - Operación opcional: `bash scripts/run_slot_discovery_candidate.sh` (no obligatorio en pipeline principal).
+- Formato por defecto: slug canónico `btc|eth|sol-updown-(5m|15m)-<unix_slot_start>`.
+- Modo legacy explícito disponible solo para compatibilidad de fixtures: `--slug-mode legacy`.
 
 ### Research Snapshot Collector Candidate (Phase 2)
 - Agente: `agents/research_collector_candidate.py`
@@ -89,6 +91,14 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Salida por defecto: `var/events/read_only_smoke.jsonl`
 - Modo estricto opcional: `STRICT=1 bash scripts/run_read_only_market_data_smoke.sh`
 - Documentación: `docs/data_sources/read_only_market_data_adapters.md`
+
+### Polymarket metadata + orderbook smoke (read-only)
+- Script: `scripts/run_polymarket_orderbook_smoke.sh`
+- Salida por defecto: `var/events/polymarket_orderbook_smoke.jsonl`
+- Ejecuta metadata Gamma + CLOB orderbook públicos (sin autenticación, sin trading).
+- Los adapters read-only usan headers públicos explícitos (`User-Agent: Mozilla/5.0`, `Accept: application/json`) para compatibilidad con WAF/Cloudflare.
+- Modo estricto opcional: `STRICT=1 bash scripts/run_polymarket_orderbook_smoke.sh`
+- Documentación: `docs/data_sources/polymarket_read_only_orderbook.md`
 
 ### Oracle Lag Signal Candidate (Phase 3)
 - Agente: `agents/oracle_lag_signal_candidate.py`
