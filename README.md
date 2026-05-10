@@ -96,6 +96,7 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Script: `scripts/run_polymarket_orderbook_smoke.sh`
 - Salida por defecto: `var/events/polymarket_orderbook_smoke.jsonl`
 - Ejecuta metadata Gamma + CLOB orderbook públicos (sin autenticación, sin trading).
+- Los adapters read-only usan headers públicos explícitos (`User-Agent: Mozilla/5.0`, `Accept: application/json`) para compatibilidad con WAF/Cloudflare.
 - Modo estricto opcional: `STRICT=1 bash scripts/run_polymarket_orderbook_smoke.sh`
 - Documentación: `docs/data_sources/polymarket_read_only_orderbook.md`
 

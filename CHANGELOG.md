@@ -2,6 +2,17 @@
 
 ## 2026-05-10
 
+### fix: make Polymarket read-only HTTP client Cloudflare-compatible
+- Updated `agents/adapters/http_client.py` with host-aware default public headers for:
+  - `gamma-api.polymarket.com`
+  - `clob.polymarket.com`
+- Read-only requests to those hosts now include:
+  - `User-Agent: Mozilla/5.0`
+  - `Accept: application/json`
+- Kept headers configurable/overrideable per request and did not add auth headers.
+- Kept non-Polymarket behavior unchanged (Binance requests do not get Polymarket `User-Agent` injection).
+- Added adapter tests to validate host header injection, override behavior, and no unintended Binance header changes.
+
 ### fix: use canonical Polymarket updown slot slugs
 - Switched `market_slot_discovery_candidate` default slug generation to canonical family:
   - `<asset>-updown-<window>-<unix_slot_start>` for BTC/ETH/SOL and 5m/15m.

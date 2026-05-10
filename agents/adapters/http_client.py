@@ -20,11 +20,31 @@ class HttpResult:
 
 
 class HttpJsonClient:
+    POLYMARKET_PUBLIC_HOST_HEADERS: dict[str, dict[str, str]] = {
+        "gamma-api.polymarket.com": {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+        },
+        "clob.polymarket.com": {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+        },
+    }
+
     def __init__(self, timeout_sec: float = 5.0, max_retries: int = 2) -> None:
         self.timeout_sec = max(0.1, timeout_sec)
         self.max_retries = max(0, max_retries)
+        self.default_headers: dict[str, str] = {"Accept": "application/json"}
+        self.host_headers: dict[str, dict[str, str]] = {
+            host: headers.copy() for host, headers in self.POLYMARKET_PUBLIC_HOST_HEADERS.items()
+        }
 
-    def get_json(self, url: str, params: dict[str, str] | None = None) -> HttpResult:
+    def get_json(
+        self,
+        url: str,
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> HttpResult:
         query = urllib.parse.urlencode(params or {})
         final_url = f"{url}?{query}" if query else url
         last_error = "unknown_error"
@@ -32,7 +52,11 @@ class HttpJsonClient:
 
         for attempt in range(self.max_retries + 1):
             try:
-                req = urllib.request.Request(final_url, headers={"Accept": "application/json"}, method="GET")
+                req = urllib.request.Request(
+                    final_url,
+                    headers=self._resolve_headers(final_url, headers),
+                    method="GET",
+                )
                 with urllib.request.urlopen(req, timeout=self.timeout_sec) as response:
                     status_code = getattr(response, "status", None)
                     body = response.read()
@@ -57,3 +81,11 @@ class HttpJsonClient:
 
         latency = int((time.perf_counter() - start) * 1000)
         return HttpResult(False, None, None, last_error, latency, final_url)
+
+    def _resolve_headers(self, url: str, headers: dict[str, str] | None) -> dict[str, str]:
+        merged = self.default_headers.copy()
+        host = urllib.parse.urlparse(url).hostname or ""
+        merged.update(self.host_headers.get(host, {}))
+        if headers:
+            merged.update(headers)
+        return merged

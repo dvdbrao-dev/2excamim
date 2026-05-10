@@ -7,6 +7,18 @@ Esta integración usa solo endpoints públicos read-only de Gamma y CLOB. No usa
 - Metadata/discovery: `https://gamma-api.polymarket.com/markets`
 - Orderbook: `https://clob.polymarket.com/book?token_id=...`
 
+## Compatibilidad HTTP pública (Cloudflare/WAF)
+Algunos endpoints públicos de Polymarket pueden devolver `403` a clientes Python con headers por defecto.
+Para requests read-only hacia:
+- `gamma-api.polymarket.com`
+- `clob.polymarket.com`
+
+los adapters usan headers explícitos de cliente público:
+- `User-Agent: Mozilla/5.0`
+- `Accept: application/json`
+
+No se agregan headers de autenticación ni credenciales.
+
 ## Por qué importa resolver token_id
 El CLOB orderbook se consulta por `token_id` de outcome. Un slug correcto sin `token_id` correcto produce `data_gap.detected`.
 

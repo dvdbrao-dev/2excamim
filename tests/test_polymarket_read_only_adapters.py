@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import urllib.request
+
+from agents.adapters.http_client import HttpJsonClient
 from agents.adapters.polymarket_metadata_adapter import PolymarketMetadataAdapter
 from agents.adapters.polymarket_orderbook_adapter import PolymarketOrderBookAdapter
 
@@ -26,6 +29,118 @@ class SeqClient:
             raise AssertionError("unexpected get_json call")
         row = self._results.pop(0)
         return type("Resp", (), {"ok": row.ok, "data": row.data, "error": row.error, "latency_ms": row.latency_ms})
+
+
+def test_http_client_injects_polymarket_headers_gamma(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class _Resp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return b"{}"
+
+    def _fake_urlopen(request: urllib.request.Request, timeout: float):
+        captured["accept"] = request.get_header("Accept") or ""
+        captured["user_agent"] = request.get_header("User-agent") or ""
+        return _Resp()
+
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+    out = HttpJsonClient(max_retries=0).get_json("https://gamma-api.polymarket.com/markets", params={"slug": "x"})
+    assert out.ok is True
+    assert captured["accept"] == "application/json"
+    assert captured["user_agent"] == "Mozilla/5.0"
+
+
+def test_http_client_injects_polymarket_headers_clob(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class _Resp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return b"{}"
+
+    def _fake_urlopen(request: urllib.request.Request, timeout: float):
+        captured["accept"] = request.get_header("Accept") or ""
+        captured["user_agent"] = request.get_header("User-agent") or ""
+        return _Resp()
+
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+    out = HttpJsonClient(max_retries=0).get_json("https://clob.polymarket.com/book", params={"token_id": "10"})
+    assert out.ok is True
+    assert captured["accept"] == "application/json"
+    assert captured["user_agent"] == "Mozilla/5.0"
+
+
+def test_http_client_does_not_change_binance_headers(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class _Resp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return b"{}"
+
+    def _fake_urlopen(request: urllib.request.Request, timeout: float):
+        captured["accept"] = request.get_header("Accept") or ""
+        captured["user_agent"] = request.get_header("User-agent") or ""
+        return _Resp()
+
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+    out = HttpJsonClient(max_retries=0).get_json("https://api.binance.com/api/v3/ticker/price", params={"symbol": "BTCUSDT"})
+    assert out.ok is True
+    assert captured["accept"] == "application/json"
+    assert captured["user_agent"] == ""
+
+
+def test_http_client_headers_are_overrideable(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class _Resp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return b"{}"
+
+    def _fake_urlopen(request: urllib.request.Request, timeout: float):
+        captured["accept"] = request.get_header("Accept") or ""
+        captured["user_agent"] = request.get_header("User-agent") or ""
+        return _Resp()
+
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+    out = HttpJsonClient(max_retries=0).get_json(
+        "https://gamma-api.polymarket.com/markets",
+        params={"slug": "x"},
+        headers={"User-Agent": "Custom-UA", "Accept": "application/custom+json"},
+    )
+    assert out.ok is True
+    assert captured["accept"] == "application/custom+json"
+    assert captured["user_agent"] == "Custom-UA"
 
 
 def test_metadata_success_by_slug() -> None:
