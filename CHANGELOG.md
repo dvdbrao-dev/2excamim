@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-05-10
+
+### feat: add Polymarket read-only orderbook collection
+- Upgraded `PolymarketMetadataAdapter` to resolve richer market metadata from Gamma:
+  - market/condition IDs, question, active/closed/resolved flags,
+  - outcome labels + `token_id` mapping,
+  - end/resolution timestamps,
+  - conservative fallback matching with `match_confidence` and `match_reason`,
+  - structured metadata errors for not-found/ambiguous/low-confidence scenarios.
+- Upgraded `PolymarketOrderBookAdapter` to fetch public CLOB books per token outcome with normalized fields:
+  - `token_id`, `outcome`, `best_bid`, `best_ask`, `mid_price`, `spread_bps`,
+  - `depth_top_n`, `imbalance_top_n`, `raw_levels_summary`, `source_quality`, latency,
+  - structured errors (`http_404`, `timeout`, `dns`, `parse_error`, etc.).
+- Extended `research_collector_candidate` read-only mode:
+  - emits per-slot `data_gap.detected` for metadata/orderbook failures,
+  - enriches `market_snapshot.observed` metadata/orderbook payloads,
+  - reports `metadata_found_count`, `orderbook_observed_count`, `data_gap_count` in `feed_health.checked`.
+- Added `scripts/run_polymarket_orderbook_smoke.sh`:
+  - read-only by default, no credentials, supports `ASSETS`, `WINDOWS`, `STRICT=1`,
+  - writes to `var/events/polymarket_orderbook_smoke.jsonl`,
+  - prints event counters + last feed health summary and fails strict mode on required conditions.
+- Added tests:
+  - `tests/test_polymarket_read_only_adapters.py`
+  - read-only collector success/failure coverage in `tests/test_research_collector_candidate.py`.
+- Added docs:
+  - `docs/data_sources/polymarket_read_only_orderbook.md`
+  - updates in `README.md`, `ROADMAP.md`, `EVENT_CATALOG.md`.
+
 ## 2026-05-07
 
 ### fix: improve read-only smoke diagnostics

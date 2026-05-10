@@ -90,6 +90,13 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Modo estricto opcional: `STRICT=1 bash scripts/run_read_only_market_data_smoke.sh`
 - Documentación: `docs/data_sources/read_only_market_data_adapters.md`
 
+### Polymarket metadata + orderbook smoke (read-only)
+- Script: `scripts/run_polymarket_orderbook_smoke.sh`
+- Salida por defecto: `var/events/polymarket_orderbook_smoke.jsonl`
+- Ejecuta metadata Gamma + CLOB orderbook públicos (sin autenticación, sin trading).
+- Modo estricto opcional: `STRICT=1 bash scripts/run_polymarket_orderbook_smoke.sh`
+- Documentación: `docs/data_sources/polymarket_read_only_orderbook.md`
+
 ### Oracle Lag Signal Candidate (Phase 3)
 - Agente: `agents/oracle_lag_signal_candidate.py`
 - Rol: puntuar señales candidatas cuando `spot/oracle` parece adelantarse al ajuste de `book mid`.

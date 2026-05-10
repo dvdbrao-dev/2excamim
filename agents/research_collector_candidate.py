@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -43,11 +44,16 @@ class SlotRecord:
 class MockMetadata:
     market_id: str | None
     condition_id: str | None
-    token_ids: list[str] | None
+    outcome_tokens: list[dict[str, str]]
     title: str | None
     active: bool | None
+    closed: bool | None
     resolved: bool | None
+    end_date: str | None
+    resolution_date: str | None
     raw_source_summary: str
+    match_confidence: float
+    match_reason: str
 
 
 def spot_delta_bps(prices: deque[float]) -> float | None:
@@ -125,6 +131,9 @@ def _health_event(
     adapter_errors: dict[str, Any],
     successful_assets: list[str],
     failed_assets: list[str],
+    metadata_found_count: int,
+    orderbook_observed_count: int,
+    data_gap_count: int,
 ) -> dict[str, Any]:
     return build_event(
         event_type="feed_health.checked",
@@ -137,6 +146,9 @@ def _health_event(
             "data_mode": data_mode,
             "successful_assets": successful_assets,
             "failed_assets": failed_assets,
+            "metadata_found_count": metadata_found_count,
+            "orderbook_observed_count": orderbook_observed_count,
+            "data_gap_count": data_gap_count,
             "adapter_errors": adapter_errors,
         },
         provenance=build_provenance(AGENT_ID, "shadow-research"),
@@ -204,10 +216,15 @@ def _snapshot_event(
         "metadata": {
             "market_id": metadata.market_id,
             "condition_id": metadata.condition_id,
-            "token_ids": metadata.token_ids,
+            "outcome_tokens": metadata.outcome_tokens,
             "title": metadata.title,
             "active": metadata.active,
+            "closed": metadata.closed,
             "resolved": metadata.resolved,
+            "end_date": metadata.end_date,
+            "resolution_date": metadata.resolution_date,
+            "match_confidence": metadata.match_confidence,
+            "match_reason": metadata.match_reason,
             "raw_source_summary": metadata.raw_source_summary,
         },
         "orderbook": orderbook,
@@ -234,7 +251,7 @@ def _snapshot_event(
 
 
 def _default_metadata(slot: SlotRecord) -> MockMetadata:
-    return MockMetadata(None, None, None, f"mock:{slot.market_slug}", True, False, "mock_seeded")
+    return MockMetadata(None, None, [], f"mock:{slot.market_slug}", True, False, False, None, None, "mock_seeded", 1.0, "mock_seeded")
 
 
 def _mode(args: argparse.Namespace) -> str:
@@ -287,6 +304,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     rolling: dict[tuple[str, str], deque[float]] = {}
     successful_assets: set[str] = set()
     all_adapter_errors: dict[str, dict[str, str]] = {}
+    metadata_found_count = 0
+    orderbook_observed_count = 0
+    data_gap_count = 0
     failures = 0
 
     for slot in slots:
@@ -302,12 +322,27 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 spot_price = _mock_spot(slot.asset)
                 metadata = _default_metadata(slot)
                 orderbook = {
+                    "books": [
+                        {
+                            "token_id": "mock_yes",
+                            "outcome": "YES",
+                            "best_bid": 0.47,
+                            "best_ask": 0.49,
+                            "mid_price": 0.48,
+                            "spread_bps": 416.67,
+                            "depth_top_n": {"n": 2, "bid": 2000.0, "ask": 1800.0},
+                            "imbalance_top_n": 0.05263,
+                            "raw_levels_summary": {"bids": 2, "asks": 2},
+                            "source_quality": "mock",
+                            "adapter_latency_ms": 1,
+                        }
+                    ],
                     "best_bid": 0.47,
                     "best_ask": 0.49,
                     "mid_price": 0.48,
                     "spread_bps": 416.67,
                     "depth_top_n": {"n": 2, "bid": 2000.0, "ask": 1800.0},
-                    "imbalance_top_n": {"n": 2, "value": 0.05263},
+                    "imbalance_top_n": 0.05263,
                 }
                 source_quality = "mock"
             else:
@@ -324,11 +359,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     metadata = MockMetadata(
                         meta.market_id,
                         meta.condition_id,
-                        meta.token_ids,
-                        meta.title,
+                        meta.outcome_tokens,
+                        meta.question,
                         meta.active,
+                        meta.closed,
                         meta.resolved,
+                        meta.end_date,
+                        meta.resolution_date,
                         meta.raw_source_summary,
+                        meta.match_confidence,
+                        meta.match_reason,
                     )
                     if meta.error:
                         _record_error(all_adapter_errors, "polymarket_metadata", slot.market_slug, meta.error)
@@ -342,24 +382,55 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                 details={"asset": slot.asset, "window": slot.window, "market_slug": slot.market_slug},
                             )
                         )
+                        data_gap_count += 1
+                    else:
+                        metadata_found_count += 1
                 else:
-                    metadata = MockMetadata(None, None, None, None, None, None, "metadata_disabled")
+                    metadata = MockMetadata(None, None, [], None, None, None, None, None, None, "metadata_disabled", 0.0, "metadata_disabled")
 
                 if args.polymarket_orderbook_enabled:
-                    ob = orderbook_adapter.observe(metadata.token_ids)
-                    total_latency_ms += ob.latency_ms
-                    orderbook = {
-                        "best_bid": ob.best_bid,
-                        "best_ask": ob.best_ask,
-                        "mid_price": ((ob.best_bid + ob.best_ask) / 2.0 if ob.best_bid is not None and ob.best_ask is not None else None),
-                        "spread_bps": ob.spread_bps,
-                        "depth_top_n": ob.depth_top_n,
-                        "imbalance_top_n": {"n": 2, "value": ob.imbalance_top_n},
-                    }
-                    if ob.error:
+                    ob_rows = orderbook_adapter.observe(metadata.outcome_tokens)
+                    total_latency_ms += sum(ob.latency_ms for ob in ob_rows)
+                    books: list[dict[str, Any]] = []
+                    ob_errors: dict[str, str] = {}
+                    for ob in ob_rows:
+                        if ob.error:
+                            ob_errors[f"polymarket_orderbook.{ob.token_id}"] = ob.error
+                        else:
+                            orderbook_observed_count += 1
+                        books.append(
+                            {
+                                "token_id": ob.token_id,
+                                "outcome": ob.outcome,
+                                "best_bid": ob.best_bid,
+                                "best_ask": ob.best_ask,
+                                "mid_price": ob.mid_price,
+                                "spread_bps": ob.spread_bps,
+                                "depth_top_n": ob.depth_top_n,
+                                "imbalance_top_n": ob.imbalance_top_n,
+                                "raw_levels_summary": ob.raw_levels_summary,
+                                "adapter_latency_ms": ob.latency_ms,
+                                "source_quality": ob.source_quality,
+                            }
+                        )
+                    orderbook = {"books": books}
+                    primary = next((b for b in books if b.get("best_bid") is not None and b.get("best_ask") is not None), None)
+                    if primary is None and books:
+                        primary = books[0]
+                    orderbook.update(
+                        {
+                            "best_bid": primary.get("best_bid") if primary else None,
+                            "best_ask": primary.get("best_ask") if primary else None,
+                            "mid_price": primary.get("mid_price") if primary else None,
+                            "spread_bps": primary.get("spread_bps") if primary else None,
+                            "depth_top_n": primary.get("depth_top_n") if primary else None,
+                            "imbalance_top_n": primary.get("imbalance_top_n") if primary else None,
+                        }
+                    )
+                    if ob_errors:
                         key_id = metadata.market_id or slot.market_slug
-                        _record_error(all_adapter_errors, "polymarket_orderbook", key_id, ob.error)
-                        adapter_errors["polymarket_orderbook"] = {key_id: ob.error}
+                        _record_error(all_adapter_errors, "polymarket_orderbook", key_id, json.dumps(ob_errors, separators=(",", ":")))
+                        adapter_errors["polymarket_orderbook"] = ob_errors
                         events.append(
                             _gap_event(
                                 "missing_polymarket_orderbook",
@@ -369,20 +440,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                 details={"asset": slot.asset, "window": slot.window, "market_slug": slot.market_slug},
                             )
                         )
+                        data_gap_count += 1
                 else:
                     orderbook = {
+                        "books": [],
                         "best_bid": None,
                         "best_ask": None,
                         "mid_price": None,
                         "spread_bps": None,
-                        "depth_top_n": {"n": 2, "bid": None, "ask": None},
-                        "imbalance_top_n": {"n": 2, "value": None},
+                        "depth_top_n": None,
+                        "imbalance_top_n": None,
                     }
 
-                if args.polymarket_orderbook_enabled and "polymarket_orderbook" not in adapter_errors:
+                if args.polymarket_orderbook_enabled and "polymarket_orderbook" not in adapter_errors and orderbook.get("books"):
                     source_quality = "read_only_orderbook"
                 elif args.polymarket_metadata_enabled and "polymarket_metadata" not in adapter_errors:
                     source_quality = "read_only_metadata"
+                elif args.polymarket_metadata_enabled or args.polymarket_orderbook_enabled:
+                    source_quality = "partial"
                 elif spot_price is not None:
                     source_quality = "read_only_spot_only"
                 else:
@@ -399,6 +474,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         details={"asset": slot.asset, "window": slot.window, "slot_start": slot.slot_start, "slot_end": slot.slot_end},
                     )
                 )
+                data_gap_count += 1
                 continue
 
             successful_assets.add(slot.asset)
@@ -448,6 +524,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             adapter_errors=all_adapter_errors,
             successful_assets=successful_list,
             failed_assets=failed_list,
+            metadata_found_count=metadata_found_count,
+            orderbook_observed_count=orderbook_observed_count,
+            data_gap_count=data_gap_count,
         ),
     )
 
