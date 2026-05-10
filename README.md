@@ -76,6 +76,8 @@ market-watch → signal_agent → scoring_agent → confirmation_agent
 - Rol: discovery determinista de slots esperados BTC/ETH/SOL en ventanas 5m/15m.
 - Salida: eventos `market_slot.discovered` en `./var/events/external_candidates.jsonl` (por defecto).
 - Operación opcional: `bash scripts/run_slot_discovery_candidate.sh` (no obligatorio en pipeline principal).
+- Formato por defecto: slug canónico `btc|eth|sol-updown-(5m|15m)-<unix_slot_start>`.
+- Modo legacy explícito disponible solo para compatibilidad de fixtures: `--slug-mode legacy`.
 
 ### Research Snapshot Collector Candidate (Phase 2)
 - Agente: `agents/research_collector_candidate.py`

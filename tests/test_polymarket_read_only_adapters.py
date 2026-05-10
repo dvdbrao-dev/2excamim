@@ -51,16 +51,16 @@ def test_metadata_success_by_slug() -> None:
             )
         ]
     )
-    out = PolymarketMetadataAdapter(client=client).observe("btc-up-or-down-may-10-0000-utc-5m")
+    out = PolymarketMetadataAdapter(client=client).observe("btc-updown-5m-1778361600")
     assert out.error is None
     assert out.market_id == "m1"
     assert out.outcome_tokens[0]["token_id"] == "10"
-    assert out.match_reason == "exact_slug"
+    assert out.match_reason == "exact_canonical_slug"
 
 
 def test_metadata_not_found_emits_structured_error() -> None:
     client = SeqClient([FakeResult(ok=True, data=[], error=None, latency_ms=6), FakeResult(ok=True, data=[], error=None, latency_ms=8)])
-    out = PolymarketMetadataAdapter(client=client).observe("btc-up-or-down-may-10-0000-utc-5m")
+    out = PolymarketMetadataAdapter(client=client).observe("btc-updown-5m-1778361600")
     assert out.error == "metadata_not_found"
     assert out.match_reason in {"fallback_no_match", "slug_not_parseable"}
 
@@ -80,8 +80,21 @@ def test_metadata_ambiguous_fallback_rejected() -> None:
             ),
         ]
     )
-    out = PolymarketMetadataAdapter(client=client).observe("btc-up-or-down-may-10-0000-utc-5m")
+    out = PolymarketMetadataAdapter(client=client).observe("btc-updown-5m-1778361600")
     assert out.error == "metadata_ambiguous_fallback"
+
+
+def test_metadata_exact_404_kept_distinct_from_fallback_403() -> None:
+    client = SeqClient(
+        [
+            FakeResult(ok=False, data=None, error="http_error:404", latency_ms=4),
+            FakeResult(ok=False, data=None, error="http_error:403", latency_ms=5),
+        ]
+    )
+    out = PolymarketMetadataAdapter(client=client).observe("btc-updown-5m-1778361600")
+    assert out.error == "http_404"
+    assert out.adapter_errors["exact_slug"] == "http_404"
+    assert out.adapter_errors["fallback_search"] == "http_403"
 
 
 def test_orderbook_success_parses_levels() -> None:

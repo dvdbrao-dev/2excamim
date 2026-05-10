@@ -11,7 +11,12 @@ Esta integración usa solo endpoints públicos read-only de Gamma y CLOB. No usa
 El CLOB orderbook se consulta por `token_id` de outcome. Un slug correcto sin `token_id` correcto produce `data_gap.detected`.
 
 ## Riesgo de matching de metadata
-El lookup intenta slug exacto; si falla, usa fallback conservador (asset + window + cercanía temporal). Si la confianza es baja o ambigua, rechaza con error estructurado (`metadata_low_confidence`, `metadata_ambiguous_fallback`).
+El lookup intenta slug canónico exacto (`<asset>-updown-<window>-<unix_slot_start>`). Si falla, usa fallback conservador solo en timestamps vecinos (slot -1 ventana / slot / slot +1 ventana). Si la confianza es baja o ambigua, rechaza con error estructurado (`metadata_low_confidence`, `metadata_ambiguous_fallback`).
+
+Diagnóstico exacto de errores:
+- Un 404 del slug exacto se conserva como exacto (`http_404` / `slug_not_found`).
+- Un error de fallback (por ejemplo 403 en búsqueda) se reporta separado en `adapter_errors.fallback_search`.
+- No se sobreescribe el diagnóstico exacto con el del fallback.
 
 ## Qué cuenta como orderbook usable
 Se considera usable cuando existe al menos un outcome con:

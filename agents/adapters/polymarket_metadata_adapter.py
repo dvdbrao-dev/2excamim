@@ -24,10 +24,11 @@ class MetadataResult:
     match_reason: str
     latency_ms: int
     error: str | None
+    adapter_errors: dict[str, str]
 
 
 class PolymarketMetadataAdapter:
-    VERSION = "polymarket_metadata_adapter_v2"
+    VERSION = "polymarket_metadata_adapter_v3"
 
     def __init__(self, timeout_sec: float = 5.0, max_retries: int = 2, client: HttpJsonClient | None = None) -> None:
         self.client = client or HttpJsonClient(timeout_sec=timeout_sec, max_retries=max_retries)
@@ -40,7 +41,7 @@ class PolymarketMetadataAdapter:
         if exact.ok and isinstance(exact.data, list):
             rows = [row for row in exact.data if isinstance(row, dict)]
             if len(rows) == 1:
-                return _to_result(rows[0], exact.latency_ms, "gamma.markets.slug", 1.0, "exact_slug")
+                return _to_result(rows[0], exact.latency_ms, "gamma.markets.slug", 1.0, "exact_canonical_slug")
             if len(rows) > 1:
                 return _error_result(
                     "gamma.markets.slug",
@@ -49,12 +50,32 @@ class PolymarketMetadataAdapter:
                     confidence=0.0,
                     match_reason="ambiguous_slug",
                 )
-        if not exact.ok:
-            return _error_result("gamma.markets.slug", exact.latency_ms, _normalize_error(exact.error), 0.0, "exact_slug_failed")
+
+        exact_error = _normalize_error(exact.error) if not exact.ok else None
+        exact_adapter_errors: dict[str, str] = {}
+        if exact_error:
+            exact_adapter_errors["exact_slug"] = exact_error
+
+        if exact_error and exact_error != "http_404":
+            return _error_result(
+                "gamma.markets.slug",
+                exact.latency_ms,
+                exact_error,
+                0.0,
+                "exact_slug_failed",
+                adapter_errors=exact_adapter_errors,
+            )
 
         parsed = _parse_candidate_slug(candidate_slug)
         if parsed is None:
-            return _error_result("gamma.markets.slug", exact.latency_ms, "metadata_not_found", 0.0, "slug_not_parseable")
+            return _error_result(
+                "gamma.markets.slug",
+                exact.latency_ms,
+                exact_error or "metadata_not_found",
+                0.0,
+                "slug_not_parseable",
+                adapter_errors=exact_adapter_errors,
+            )
 
         fallback = self.client.get_json(
             "https://gamma-api.polymarket.com/markets",
@@ -62,7 +83,16 @@ class PolymarketMetadataAdapter:
         )
         latency_total = exact.latency_ms + fallback.latency_ms
         if not fallback.ok or not isinstance(fallback.data, list):
-            return _error_result("gamma.markets.search", latency_total, _normalize_error(fallback.error), 0.0, "fallback_failed")
+            fallback_error = _normalize_error(fallback.error)
+            merged = {**exact_adapter_errors, "fallback_search": fallback_error}
+            return _error_result(
+                "gamma.markets.search",
+                latency_total,
+                exact_error or fallback_error,
+                0.0,
+                "fallback_failed",
+                adapter_errors=merged,
+            )
 
         candidates: list[tuple[float, str, dict[str, Any]]] = []
         for row in fallback.data:
@@ -74,14 +104,36 @@ class PolymarketMetadataAdapter:
             candidates.append((score, reason, row))
 
         if not candidates:
-            return _error_result("gamma.markets.search", latency_total, "metadata_not_found", 0.0, "fallback_no_match")
+            error = "slug_not_found" if exact_error == "http_404" else "metadata_not_found"
+            return _error_result(
+                "gamma.markets.search",
+                latency_total,
+                error,
+                0.0,
+                "fallback_no_match",
+                adapter_errors=exact_adapter_errors,
+            )
 
         candidates.sort(key=lambda item: item[0], reverse=True)
         best_score, reason, best_row = candidates[0]
         if best_score < 0.7:
-            return _error_result("gamma.markets.search", latency_total, "metadata_low_confidence", best_score, reason)
+            return _error_result(
+                "gamma.markets.search",
+                latency_total,
+                "metadata_low_confidence",
+                best_score,
+                reason,
+                adapter_errors=exact_adapter_errors,
+            )
         if len(candidates) > 1 and abs(candidates[0][0] - candidates[1][0]) < 0.1:
-            return _error_result("gamma.markets.search", latency_total, "metadata_ambiguous_fallback", best_score, "ambiguous_fallback")
+            return _error_result(
+                "gamma.markets.search",
+                latency_total,
+                "metadata_ambiguous_fallback",
+                best_score,
+                "ambiguous_fallback",
+                adapter_errors=exact_adapter_errors,
+            )
 
         return _to_result(best_row, latency_total, "gamma.markets.search", best_score, reason)
 
@@ -105,11 +157,17 @@ def _to_result(
         match_reason=match_reason,
         latency_ms=latency_ms,
         error=None,
+        adapter_errors={},
     )
 
 
 def _error_result(
-    raw_source_summary: str, latency_ms: int, error: str, confidence: float, match_reason: str
+    raw_source_summary: str,
+    latency_ms: int,
+    error: str,
+    confidence: float,
+    match_reason: str,
+    adapter_errors: dict[str, str] | None = None,
 ) -> MetadataResult:
     return MetadataResult(
         market_id=None,
@@ -126,6 +184,7 @@ def _error_result(
         match_reason=match_reason,
         latency_ms=latency_ms,
         error=error,
+        adapter_errors=adapter_errors or {},
     )
 
 
@@ -155,10 +214,16 @@ def _parse_string_list(value: Any) -> list[str]:
 
 def _parse_candidate_slug(slug: str) -> dict[str, Any] | None:
     lower = slug.lower()
-    match = re.match(r"^(btc|eth|sol)-up-or-down-([a-z]{3})-(\d{2})-(\d{4})-utc-(5m|15m)$", lower)
-    if not match:
+    canonical = re.match(r"^(btc|eth|sol)-updown-(5m|15m)-(\d{10})$", lower)
+    if canonical:
+        asset, window, unix_ts = canonical.groups()
+        slot_dt = datetime.fromtimestamp(int(unix_ts), tz=timezone.utc)
+        return {"asset": asset.upper(), "window": window, "slot_dt": slot_dt}
+
+    legacy = re.match(r"^(btc|eth|sol)-up-or-down-([a-z]{3})-(\d{2})-(\d{4})-utc-(5m|15m)$", lower)
+    if not legacy:
         return None
-    asset, mon, day, hhmm, window = match.groups()
+    asset, mon, day, hhmm, window = legacy.groups()
     month_map = {
         "jan": 1,
         "feb": 2,
@@ -196,11 +261,17 @@ def _score_market_match(row: dict[str, Any], parsed: dict[str, Any]) -> tuple[fl
 
     market_time = _extract_market_time(row)
     if market_time is not None:
-        delta = abs((market_time - parsed["slot_dt"]).total_seconds())
-        if delta <= 300:
+        delta = (market_time - parsed["slot_dt"]).total_seconds()
+        abs_delta = abs(delta)
+        if abs_delta <= 300:
             score += 0.3
-            reasons.append("slot_time_close")
-        elif delta <= 900:
+            if delta < 0:
+                reasons.append("nearby_canonical_slug_minus_one")
+            elif delta > 0:
+                reasons.append("nearby_canonical_slug_plus_one")
+            else:
+                reasons.append("exact_canonical_slug")
+        elif abs_delta <= 900:
             score += 0.12
             reasons.append("slot_time_near")
 

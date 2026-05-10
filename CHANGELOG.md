@@ -2,6 +2,18 @@
 
 ## 2026-05-10
 
+### fix: use canonical Polymarket updown slot slugs
+- Switched `market_slot_discovery_candidate` default slug generation to canonical family:
+  - `<asset>-updown-<window>-<unix_slot_start>` for BTC/ETH/SOL and 5m/15m.
+- Added `slug_family`, `slug_timestamp`, `legacy_candidate_slug`, and canonical `discovery_method` in `market_slot.discovered` payload.
+- Preserved legacy heuristic slug behind explicit `--slug-mode legacy` (no longer default in read-only path).
+- Upgraded metadata adapter diagnostics:
+  - exact slug 404 is preserved (`http_404` / `slug_not_found`) and no longer masked by fallback errors,
+  - fallback errors are emitted separately via `adapter_errors` (`exact_slug`, `fallback_search`),
+  - canonical slug parsing and nearby timestamp fallback reasoning (`nearby_canonical_slug_minus_one`, `nearby_canonical_slug_plus_one`).
+- Updated smoke script output with canonical slugs, counters, adapter errors, and explicit `STRICT` pass line.
+- Added/updated tests for canonical slug generation and 404-vs-403 metadata diagnosis.
+
 ### feat: add Polymarket read-only orderbook collection
 - Upgraded `PolymarketMetadataAdapter` to resolve richer market metadata from Gamma:
   - market/condition IDs, question, active/closed/resolved flags,

@@ -371,8 +371,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         meta.match_reason,
                     )
                     if meta.error:
-                        _record_error(all_adapter_errors, "polymarket_metadata", slot.market_slug, meta.error)
-                        adapter_errors["polymarket_metadata"] = {slot.market_slug: meta.error}
+                        serialized = json.dumps(meta.adapter_errors or {"summary": meta.error}, separators=(",", ":"))
+                        _record_error(all_adapter_errors, "polymarket_metadata", slot.market_slug, serialized)
+                        adapter_errors["polymarket_metadata"] = meta.adapter_errors or {slot.market_slug: meta.error}
                         events.append(
                             _gap_event(
                                 "missing_polymarket_metadata",

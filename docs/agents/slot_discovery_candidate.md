@@ -25,11 +25,21 @@ Descubrir slots no implica ventaja de ejecución o predicción. Solo crea un map
 - `window`
 - `slot_start`
 - `slot_end`
-- `candidate_slug`
-- `confidence`
-- `discovery_method`
+- `candidate_slug` (canónico por defecto: `<asset>-updown-<window>-<unix_slot_start>`)
+- `legacy_candidate_slug` (nullable; solo compatibilidad)
+- `slug_family` (`canonical_updown_unix_v1` por defecto)
+- `slug_timestamp` (UNIX slot start)
+- `confidence` (más alta en familia canónica)
+- `discovery_method` (`canonical_updown_unix_v1` por defecto)
 - `confirmed`
 - `source`
+
+Ejemplo canónico:
+- slot UTC `2026-05-10T10:15:00Z` => UNIX `1778408100`
+- BTC 5m => `btc-updown-5m-1778408100`
+
+Compatibilidad legacy explícita:
+- `--slug-mode legacy` conserva el formato `up-or-down` solo para fixtures/pruebas antiguas.
 
 ## Example
 ```bash

@@ -22,7 +22,7 @@ def _write_slots(path: Path) -> None:
             "window": "5m",
             "slot_start": "2026-05-07T18:00:00Z",
             "slot_end": "2026-05-07T18:05:00Z",
-            "candidate_slug": "btc-up-or-down-may-07-1800-utc-5m",
+            "candidate_slug": "btc-updown-5m-1778176800",
         },
     }
     path.write_text(json.dumps(event) + "\n", encoding="utf-8")
@@ -170,9 +170,10 @@ def test_read_only_with_orderbook_fields(monkeypatch, tmp_path: Path) -> None:
             resolution_date=None,
             raw_source_summary="test",
             match_confidence=1.0,
-            match_reason="exact_slug",
+            match_reason="exact_canonical_slug",
             latency_ms=5,
             error=None,
+            adapter_errors={},
         ),
     )
     monkeypatch.setattr(
@@ -246,9 +247,10 @@ def test_read_only_orderbook_missing_emits_data_gap(monkeypatch, tmp_path: Path)
             resolution_date=None,
             raw_source_summary="test",
             match_confidence=1.0,
-            match_reason="exact_slug",
+            match_reason="exact_canonical_slug",
             latency_ms=5,
             error=None,
+            adapter_errors={},
         ),
     )
     monkeypatch.setattr(
