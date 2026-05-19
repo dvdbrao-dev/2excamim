@@ -101,7 +101,15 @@ python3 agents/openfang_bridge.py \
 # Market-watch Rust runtime — hard dependency; pipeline aborts if this fails.
 # Core agents below require ./var/market-watch snapshots.
 # ---------------------------------------------------------------------------
-timeout 60 cargo run -p market-watch -- --state-dir ./var/market-watch
+if command -v cargo >/dev/null 2>&1; then
+    CARGO_BIN="$(command -v cargo)"
+elif [[ -x "/root/.cargo/bin/cargo" ]]; then
+    CARGO_BIN="/root/.cargo/bin/cargo"
+else
+    echo "[pipeline] ERROR: cargo binary not found in PATH or /root/.cargo/bin/cargo" >&2
+    exit 127
+fi
+timeout 60 "${CARGO_BIN}" run -p market-watch -- --state-dir ./var/market-watch
 
 # ---------------------------------------------------------------------------
 # Core pipeline agents
