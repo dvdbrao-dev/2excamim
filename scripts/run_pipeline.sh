@@ -37,9 +37,14 @@ run_agent() {
     local agent_name="$1"
     shift
     local counter_file="${FAILURES_DIR}/${agent_name}.count"
+    local last_error_file="${FAILURES_DIR}/${agent_name}.last_error"
+    local err_file
+    err_file="$(mktemp)"
 
-    if "$@"; then
+    if "$@" 2>"${err_file}"; then
         rm -f "${counter_file}"
+        rm -f "${last_error_file}"
+        rm -f "${err_file}"
         return 0
     fi
 
@@ -51,6 +56,13 @@ run_agent() {
     count=$(( count + 1 ))
     printf '%s\n' "${count}" > "${counter_file}"
     echo "[pipeline] WARN: ${agent_name} failed (consecutive: ${count}/${MAX_FAILURES})" >&2
+    {
+        echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "agent=${agent_name}"
+        echo "command=$*"
+        cat "${err_file}"
+    } > "${last_error_file}"
+    rm -f "${err_file}"
 
     if (( count >= MAX_FAILURES )); then
         echo "[pipeline] KILL SWITCH triggered by ${agent_name} after ${count} consecutive failures." >&2
