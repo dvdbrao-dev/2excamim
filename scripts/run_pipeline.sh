@@ -110,8 +110,9 @@ python3 agents/openfang_bridge.py \
     || echo "[pipeline] WARN: openfang_bridge failed, continuing"
 
 # ---------------------------------------------------------------------------
-# Market-watch Rust runtime — hard dependency; pipeline aborts if this fails.
-# Core agents below require ./var/market-watch snapshots.
+# Market-watch Rust runtime.
+# If it fails, continue with last known snapshots so backend agents can drain
+# pending signals instead of hard-stopping the whole paper pipeline.
 # ---------------------------------------------------------------------------
 if command -v cargo >/dev/null 2>&1; then
     CARGO_BIN="$(command -v cargo)"
@@ -121,7 +122,8 @@ else
     echo "[pipeline] ERROR: cargo binary not found in PATH or /root/.cargo/bin/cargo" >&2
     exit 127
 fi
-timeout 60 "${CARGO_BIN}" run -p market-watch -- --state-dir ./var/market-watch
+run_agent "market_watch" \
+    timeout 60 "${CARGO_BIN}" run -p market-watch -- --state-dir ./var/market-watch
 
 # ---------------------------------------------------------------------------
 # Core pipeline agents
