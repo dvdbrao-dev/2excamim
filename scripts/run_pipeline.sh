@@ -9,6 +9,7 @@ MAX_FAILURES=5
 EXTERNAL_EDGE_CANDIDATES_ENABLED="${EXTERNAL_EDGE_CANDIDATES_ENABLED:-0}"
 EXTERNAL_EDGE_MOCK_MODE="${EXTERNAL_EDGE_MOCK_MODE:-1}"
 EXTERNAL_EDGE_OUTPUT_JSONL="${EXTERNAL_EDGE_OUTPUT_JSONL:-./var/events/external_candidates.jsonl}"
+MARKET_WATCH_ENABLED="${MARKET_WATCH_ENABLED:-0}"
 
 # ---------------------------------------------------------------------------
 # Kill switch — abort silently when the file exists
@@ -111,19 +112,24 @@ python3 agents/openfang_bridge.py \
 
 # ---------------------------------------------------------------------------
 # Market-watch Rust runtime.
-# If it fails, continue with last known snapshots so backend agents can drain
-# pending signals instead of hard-stopping the whole paper pipeline.
+# Disabled by default while external Polymarket DNS/API is unstable in this
+# environment. Re-enable with MARKET_WATCH_ENABLED=1 once connectivity is
+# confirmed; core agents can still drain pending signals from existing snapshots.
 # ---------------------------------------------------------------------------
-if command -v cargo >/dev/null 2>&1; then
-    CARGO_BIN="$(command -v cargo)"
-elif [[ -x "/root/.cargo/bin/cargo" ]]; then
-    CARGO_BIN="/root/.cargo/bin/cargo"
+if [[ "${MARKET_WATCH_ENABLED}" == "1" ]]; then
+    if command -v cargo >/dev/null 2>&1; then
+        CARGO_BIN="$(command -v cargo)"
+    elif [[ -x "/root/.cargo/bin/cargo" ]]; then
+        CARGO_BIN="/root/.cargo/bin/cargo"
+    else
+        echo "[pipeline] ERROR: cargo binary not found in PATH or /root/.cargo/bin/cargo" >&2
+        exit 127
+    fi
+    run_agent "market_watch" \
+        bash -lc 'timeout 60 "$1" run -p market-watch -- --state-dir ./var/market-watch; rc=$?; [ "$rc" -eq 0 ] || [ "$rc" -eq 124 ]' _ "${CARGO_BIN}"
 else
-    echo "[pipeline] ERROR: cargo binary not found in PATH or /root/.cargo/bin/cargo" >&2
-    exit 127
+    echo "[pipeline] WARN: market_watch disabled (MARKET_WATCH_ENABLED=0); using last known snapshots." >&2
 fi
-run_agent "market_watch" \
-    timeout 60 "${CARGO_BIN}" run -p market-watch -- --state-dir ./var/market-watch
 
 # ---------------------------------------------------------------------------
 # Core pipeline agents
